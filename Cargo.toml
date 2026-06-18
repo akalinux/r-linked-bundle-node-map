@@ -8,3 +8,6 @@ wasm-bindgen = "0.2.125"
 
 [lib]
 crate-type = ["cdylib"]
+
+[profile.release]
+lto = true

@@ -11,6 +11,7 @@ token.txt
 .yarn*
 .yarn/*
 /target
+/.vscode
 
 
 # Added by cargo
