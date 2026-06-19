@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 
-use crate::{CORE_R, CalculatorTrait, ContainsPoint, Point, PointBox};
+use crate::{CalculatorTrait, ContainsPoint, GetCenter, Point, PointBox};
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct Node {
@@ -15,44 +15,34 @@ pub struct Node {
 
 #[wasm_bindgen]
 impl Node {
-    pub fn new_defaults(x: f64, y: f64, id: String) -> Self {
-        let label = String::from(&id);
-        return Self {
-            x,
-            y,
-            id,
-            w: CORE_R,
-            h: CORE_R,
-            label,
-            opt: String::from("node_defaults"),
-        };
-    }
     #[wasm_bindgen(constructor)]
-    pub fn new(x: f64, y: f64, id: String, label: String, w: f64, h: f64, opt: String) -> Self {
+    pub fn new(x: f64, y: f64, w: f64, h: f64, id: String, label: String, opt: String) -> Self {
         return Self {
             x,
             y,
-            id,
             w,
             h,
+            id,
             label,
             opt,
         };
     }
 
-    pub fn transformed(&self, x: f64, y: f64, scale: f64) -> Self {
+    pub fn transform(&self, x: f64, y: f64, w: f64, h: f64) -> Self {
         return Self::new(
             self.x + x,
             self.y + y,
+            self.w + w,
+            self.h + h,
             String::from(&self.id),
             String::from(&self.label),
-            self.w * scale,
-            self.h * scale,
             String::from(&self.opt),
         );
     }
+}
 
-    pub fn get_center(&self) -> Point {
+impl GetCenter for Node {
+    fn get_center(&self) -> Point {
         return Point {
             x: self.x,
             y: self.y,

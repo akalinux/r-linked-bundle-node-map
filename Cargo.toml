@@ -1,5 +1,5 @@
 [package]
-name = "r-linked-bundle-node-map"
+name = "linked-bundle-node-map"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,7 +7,7 @@ edition = "2024"
 wasm-bindgen = "0.2.125"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib","rlib"]
 
 [profile.release]
 lto = true

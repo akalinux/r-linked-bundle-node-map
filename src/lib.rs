@@ -1,10 +1,9 @@
 use std::{f64::consts::PI, ops::RangeInclusive};
 use wasm_bindgen::prelude::*;
-mod node;
+pub mod node;
 const TRIANGLE_MARGINE_FOR_ERROR: f64 = 1.00004;
-const CORE_R: f64 = 12.0;
 const RAD2DEG: f64 = 180.0 / PI;
-const FULL_CIRCLE: f64 = 2.0 * PI;
+//const FULL_CIRCLE: f64 = 2.0 * PI;
 
 pub trait ContainsPoint {
     /// Returns true if the element contains the given point.
@@ -12,7 +11,15 @@ pub trait ContainsPoint {
 }
 
 #[wasm_bindgen(inspectable)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Transform {
+    pub x: f64,
+    pub y: f64,
+    pub k: f64,
+}
+
+#[wasm_bindgen(inspectable)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
@@ -23,6 +30,16 @@ impl Point {
         self.x += p.x;
         self.y += p.y;
     }
+}
+
+impl GetCenter for Point {
+    fn get_center(&self) -> Point {
+        return *self;
+    }
+}
+
+pub trait GetCenter {
+    fn get_center(&self) -> Point;
 }
 
 pub trait PointBox {
@@ -60,10 +77,10 @@ pub trait PointBox {
         let min_y = self.get_min_y();
         let max_y = self.get_max_y();
         return (
-            Point { x: max_x, y: min_y }, // ne
             Point { x: min_x, y: min_y }, // nw
-            Point { x: max_x, y: max_y }, // se
+            Point { x: max_x, y: min_y }, // ne
             Point { x: min_x, y: max_y }, // sw
+            Point { x: max_x, y: max_y }, // se
         );
     }
 
@@ -104,7 +121,7 @@ pub trait CalculatorTrait {
         return degree * PI / 180.0;
     }
 
-    fn get_angle(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+    fn get_angle(&self, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
         let dx = x1 - x2;
         let dy = y1 - y2;
 
@@ -115,10 +132,11 @@ pub trait CalculatorTrait {
 
         return base;
     }
+
     fn inside_square(&self, n: &Point, p: &Point, w: f64, h: f64) -> bool {
         let dx = (p.x - n.x).abs();
         let dy = (p.y - n.y).abs();
-        return dx > w * 0.5 || dy > h * 0.5;
+        return !(dx > w * 0.5 || dy > h * 0.5);
     }
 
     fn get_xy(&self, cx: f64, cy: f64, r: f64, degree: f64) -> Point {
@@ -147,14 +165,14 @@ pub trait CalculatorTrait {
     }
 
     fn inside_box(&self, pbox: &impl PointBox, p: &Point) -> bool {
-        let (ne, nw, se, sw) = pbox.full_box();
+        let (nw, ne, sw, se) = pbox.full_box();
         let box_area = (self.triangle_area(ne.x, ne.y, nw.x, nw.y, se.x, se.y)
             + self.triangle_area(ne.x, ne.y, nw.x, nw.y, sw.x, sw.y))
             * TRIANGLE_MARGINE_FOR_ERROR;
 
         let mut triangle_sum = 0.0;
         let order = [&ne, &nw, &sw, &se, &ne];
-        for id in 0..order.len() {
+        for id in 0..order.len() - 1 {
             let left = order[id];
             let right = order[id + 1];
             triangle_sum += self.triangle_area(p.x, p.y, left.x, left.y, right.x, right.y);
@@ -171,5 +189,32 @@ pub trait CalculatorTrait {
 
     fn get_distance_square(&self, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
         return (x1 - x2).powi(2) + (y1 - y2).powi(2);
+    }
+
+    /// Takes a given point on the screen and coverts it to point on the map.
+    fn to_map_xy(&self, p: &Point, t: &Transform) -> Point {
+        let px = p.x - t.x;
+        let py = p.y - t.y;
+        let x = px / t.k;
+        let y = py / t.k;
+        return Point { x, y };
+    }
+
+    /// Takes a point from the map and converts it to a point for the screen.
+    fn to_screen_xy(&self, p: &Point, t: &Transform) -> Point {
+        let px = p.x + t.x;
+        let py = p.y + t.y;
+        let x = px * t.k;
+        let y = py * t.k;
+        return Point { x, y };
+    }
+
+    fn center_transform(obj: &impl GetCenter, width: f64, height: f64, t: &Transform) -> Transform {
+        let n = obj.get_center();
+
+        let k = t.k;
+        let x = width * 0.5 - n.x * k;
+        let y = height * 0.5 - n.y * k;
+        return Transform { x, y, k };
     }
 }
