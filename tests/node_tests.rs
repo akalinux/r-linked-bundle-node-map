@@ -8,7 +8,7 @@ fn node_box() {
         0.5,
         1.0,
         1.0,
-        String::from("id"),
+        0,
         String::from("label"),
         String::from("opt"),
     );

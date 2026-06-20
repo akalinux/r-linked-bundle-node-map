@@ -8,15 +8,23 @@ pub struct Node {
     pub y: f64,
     pub h: f64,
     pub w: f64,
-    pub id: String,
+    pub id: u32,
     pub label: String,
     pub opt: String,
+}
+
+#[wasm_bindgen(inspectable)]
+#[wasm_bindgen(getter_with_clone)]
+pub struct NodeOpt {
+    pub id: String,
+    pub src: String,
+    pub color: String,
 }
 
 #[wasm_bindgen]
 impl Node {
     #[wasm_bindgen(constructor)]
-    pub fn new(x: f64, y: f64, w: f64, h: f64, id: String, label: String, opt: String) -> Self {
+    pub fn new(x: f64, y: f64, w: f64, h: f64, id: u32, label: String, opt: String) -> Self {
         return Self {
             x,
             y,
@@ -34,7 +42,7 @@ impl Node {
             self.y + y,
             self.w + w,
             self.h + h,
-            String::from(&self.id),
+            self.id,
             String::from(&self.label),
             String::from(&self.opt),
         );
