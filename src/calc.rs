@@ -2,7 +2,7 @@ use crate::{
     Point, PointBox,
     bsp::{IndexSet, Indexer},
     link::{Bundle, BunldeOpt, ContainedBy, Link, LinkContainer, LinkOpt, create_container_id},
-    node::Node,
+    node::{Node, NodeOpt},
 };
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
@@ -10,18 +10,87 @@ use wasm_bindgen::prelude::*;
 pub struct Options {
     pub options: HashMap<String, LinkOpt>,
     pub bundle_ops: HashMap<String, BunldeOpt>,
+    pub node_opts: HashMap<String, NodeOpt>,
+}
+
+pub struct BacklogUpdates {
+    pub nodes: HashMap<u32, ()>,
+    pub links: HashMap<u64, ()>,
+}
+
+impl BacklogUpdates {
+    pub fn new() -> Self {
+        return Self {
+            nodes: HashMap::new(),
+            links: HashMap::new(),
+        };
+    }
+
+    pub fn clear(&mut self) {
+        self.nodes.clear();
+        self.links.clear();
+    }
+}
+
+pub struct NodeStates {
+    updates: HashMap<u32, Node>,
+    nodes: HashMap<u32, Node>,
+    node_counter: u64,
+    order: HashMap<u32, u64>,
+}
+
+impl NodeStates {
+    pub fn new() -> Self {
+        return Self {
+            updates: HashMap::new(),
+            nodes: HashMap::new(),
+            node_counter: 0,
+            order: HashMap::new(),
+        };
+    }
+
+    pub fn insert(&mut self, node: Node) -> Option<Node> {
+        self.updates.remove(&node.id);
+        let id = node.id;
+        let res = self.nodes.insert(node.id, node);
+        if res.is_none() {
+            self.order.insert(id, self.node_counter);
+            self.node_counter += 1;
+        }
+        return res;
+    }
+
+    pub fn remove(&mut self, id: u32) -> Option<Node> {
+        self.updates.remove(&id);
+        self.order.remove(&id);
+        return self.nodes.remove(&id);
+    }
+
+    pub fn update(&mut self, node: Node) -> Option<Node> {
+        return self.updates.insert(node.id, node);
+    }
+
+    pub fn get(&self, id: u32) -> Option<&Node> {
+        if let Some(node) = self.updates.get(&id) {
+            return Some(node);
+        } else if let Some(node) = self.nodes.get(&id) {
+            return Some(node);
+        }
+        return None;
+    }
+
+    pub fn get_order(&self, id: u32) -> u64 {
+        return *self.order.get(&id).unwrap();
+    }
 }
 
 #[wasm_bindgen]
 pub struct Calculator {
-    node_counter: u64,
-    node_order: HashMap<u32, u64>,
-    nodes: HashMap<u32, Node>,
+    link_counter: u64, // Sequence in which a link container was added.
     node_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Node instances to LinkContainer instances
-    node_u: HashMap<u32, Node>,                 // Updates to nodes
+    nodes: NodeStates,
 
     links: HashMap<u64, LinkContainer>,
-    link_counter: u64,
     link_order: HashMap<u64, u64>,
     link_mouse_bound: i32,
     screen_bound: i32,
@@ -31,17 +100,23 @@ pub struct Calculator {
     node_index_mouse: Indexer<u32>,
     node_mouse_bound: i32,
     node_index_screen: Indexer<u32>,
+    backlog: BacklogUpdates,
+    drag: bool,
 }
 
 macro_rules! update_link {
-    ($self:expr,$lc:expr,$lid:expr) => {{
+    ($self:expr,$lc:expr) => {{
         $lc.update(&$self.nodes, &$self.options);
-        $self
-            .link_index_mouse
-            .update($lid, $lc.mouse_index($self.link_mouse_bound));
+        if $self.drag {
+            $self.backlog.links.insert($lc.id, ());
+        } else {
+            $self
+                .link_index_mouse
+                .update($lc.id, $lc.mouse_index($self.link_mouse_bound));
+        }
         $self
             .link_index_screen
-            .update($lid, $lc.screen_index($self.screen_bound));
+            .update($lc.id, $lc.screen_index($self.screen_bound));
     }};
 }
 
@@ -78,14 +153,18 @@ impl Calculator {
         let mut res = None;
         if let Some(lc) = self.links.get_mut(&lid) {
             res = lc.remove_link(id);
-            update_link!(self, lc, lid);
-            /*
-            lc.update(&self.nodes, &self.options);
-            self.link_index_mouse
-                .update(lid, lc.mouse_index(self.link_mouse_bound));
-            self.link_index_screen
-                .update(lid, lc.screen_index(self.screen_bound));
-            */
+            update_link!(self, lc);
+        }
+        self.remove_lc(lid);
+        return res;
+    }
+
+    pub fn remove_bundle(&mut self, src: u32, dst: u32, id: u32) -> Option<Bundle> {
+        let lid = create_container_id(src, dst);
+        let mut res = None;
+        if let Some(lc) = self.links.get_mut(&lid) {
+            res = lc.remove_bundle(id);
+            update_link!(self, lc);
         }
         self.remove_lc(lid);
         return res;
@@ -96,14 +175,8 @@ impl Calculator {
         self.add_lc(id);
         let lc = self.links.get_mut(&id).unwrap();
         let res = lc.add_link(link);
-        update_link!(self, lc, id);
-        /*
-        lc.update(&self.nodes, &self.options);
-        self.link_index_mouse
-            .update(id, lc.mouse_index(self.link_mouse_bound));
-        self.link_index_screen
-            .update(id, lc.screen_index(self.screen_bound));
-        */
+        update_link!(self, lc);
+
         return res;
     }
 
@@ -113,30 +186,21 @@ impl Calculator {
 
         let lc = self.links.get_mut(&id).unwrap();
         let res = lc.add_bundle(bundle);
-        lc.update(&self.nodes, &self.options);
-        self.link_index_mouse
-            .update(id, lc.mouse_index(self.link_mouse_bound));
-        self.link_index_screen
-            .update(id, lc.screen_index(self.screen_bound));
+        update_link!(self, lc);
 
         return res;
     }
 
     pub fn add_node(&mut self, node: Node) -> Option<Node> {
-        self.node_u.remove(&node.id);
         let id = node.id;
         let new_m = Some(node.index_bound(self.node_mouse_bound));
         let new_s = Some(node.index_bound(self.screen_bound));
-        let res = self.nodes.insert(node.id, node);
+        let res = self.nodes.insert(node);
         let mut old_m = None;
         let mut old_s = None;
         if let Some(old_node) = &res {
             old_m = Some(old_node.index_bound(self.node_mouse_bound));
             old_s = Some(old_node.index_bound(self.screen_bound));
-        } else {
-            let next = self.node_counter;
-            self.node_counter += 1;
-            self.node_order.insert(id, next);
         }
         self.index_node(id, (old_m, new_m), (old_s, new_s));
 
@@ -144,7 +208,11 @@ impl Calculator {
     }
 
     fn index_node(&mut self, id: u32, mi: IndexSet, si: IndexSet) {
-        self.node_index_mouse.update(id, mi);
+        if self.drag {
+            self.backlog.nodes.insert(id, ());
+        } else {
+            self.node_index_mouse.update(id, mi);
+        }
         self.node_index_screen.update(id, si);
         let mut known = HashMap::new();
         self.update_links(id, &mut known);
@@ -157,19 +225,13 @@ impl Calculator {
                     continue;
                 }
                 let link = self.links.get_mut(lid).unwrap();
-                link.update(&self.nodes, &self.options);
-                self.link_index_mouse
-                    .update(*lid, link.mouse_index(self.link_mouse_bound));
-                self.link_index_screen
-                    .update(*lid, link.screen_index(self.screen_bound));
+                update_link!(self, link);
             }
         }
     }
 
     pub fn remove_node(&mut self, id: u32) -> Option<Node> {
-        self.node_u.remove(&id);
-        self.node_order.remove(&id);
-        let res = self.nodes.remove(&id);
+        let res = self.nodes.remove(id);
         if let Some(node) = &res {
             let old_m = Some(node.index_bound(self.node_mouse_bound));
             let old_s = Some(node.index_bound(self.screen_bound));
@@ -179,39 +241,23 @@ impl Calculator {
         return res;
     }
 
-    pub fn move_nodes(&mut self, nodes: &[u32], p: &Point) {
+    pub fn move_nodes(&mut self, node_ids: &[u32], p: &Point) {
         let mut ns = HashMap::new();
-        for id in nodes {
-            let n;
-            if let Some(node) = self.node_u.get(id) {
-                n = node;
-            } else if let Some(node) = self.nodes.get(id) {
-                n = node;
+        let nodes = &mut self.nodes;
+        for id in node_ids {
+            let new;
+            if let Some(node) = nodes.get(*id) {
+                new = node.transform(p.x, p.y, 0.0, 0.0);
             } else {
                 continue;
             }
-            ns.insert(n.id, ());
-
-            self.node_u.insert(*id, n.transform(p.x, p.y, 0.0, 0.0));
+            nodes.update(new);
+            ns.insert(*id, ());
         }
 
         let mut known = HashMap::new();
         for id in ns.keys() {
             self.update_links(*id, &mut known);
         }
-    }
-}
-
-impl Calculator {
-    pub fn get_current_node(&self, id: u32) -> Option<&Node> {
-        let n;
-        if let Some(node) = self.node_u.get(&id) {
-            n = node;
-        } else if let Some(node) = self.nodes.get(&id) {
-            n = node;
-        } else {
-            return None;
-        }
-        return Some(n);
     }
 }

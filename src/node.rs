@@ -19,6 +19,7 @@ pub struct NodeOpt {
     pub id: String,
     pub src: String,
     pub color: String,
+    pub layer: u8,
 }
 
 #[wasm_bindgen]
