@@ -1,5 +1,5 @@
 use crate::{
-    Point, PointBox,
+    CalculatorTrait, Point, PointBox, Transform,
     bsp::{IndexSet, Indexer},
     link::{Bundle, BunldeOpt, ContainedBy, Link, LinkContainer, LinkOpt, create_container_id},
     node::{Node, NodeOpt},
@@ -12,6 +12,32 @@ pub struct Options {
     pub bundle_ops: HashMap<String, BunldeOpt>,
     pub node_opts: HashMap<String, NodeOpt>,
 }
+
+#[wasm_bindgen]
+pub struct Move {
+    pub start: Point,
+}
+
+#[wasm_bindgen]
+impl Move {
+    #[wasm_bindgen(constructor)]
+    pub fn new(p: &Point) -> Self {
+        let res = Self { start: *p };
+
+        return res;
+    }
+    pub fn stop(&mut self, p: &Point) -> Point {
+        let diff = Point {
+            x: p.x - self.start.x,
+            y: p.y - self.start.y,
+        };
+        self.start = *p;
+
+        return diff;
+    }
+}
+
+impl CalculatorTrait for Move {}
 
 pub struct BacklogUpdates {
     pub nodes: HashMap<u32, ()>,
@@ -102,6 +128,7 @@ pub struct Calculator {
     node_index_screen: Indexer<u32>,
     backlog: BacklogUpdates,
     drag: bool,
+    transform: Transform,
 }
 
 macro_rules! update_link {
@@ -122,6 +149,12 @@ macro_rules! update_link {
 
 #[wasm_bindgen]
 impl Calculator {
+    pub fn get_transform(&self) -> Transform {
+        return self.transform;
+    }
+    pub fn set_transform(&mut self, t: &Transform) {
+        self.transform = *t;
+    }
     fn add_lc(&mut self, id: u64) {
         if self.links.get(&id).is_none() {
             let next = self.link_counter;
