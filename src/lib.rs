@@ -1,13 +1,12 @@
 use std::{f64::consts::PI, ops::RangeInclusive};
 use wasm_bindgen::prelude::*;
+
+use crate::constants::{RAD2DEG, TRIANGLE_MARGINE_FOR_ERROR};
 pub mod bsp;
 pub mod calc;
+pub mod constants;
 pub mod link;
 pub mod node;
-
-const TRIANGLE_MARGINE_FOR_ERROR: f64 = 1.00004;
-const RAD2DEG: f64 = 180.0 / PI;
-//const FULL_CIRCLE: f64 = 2.0 * PI;
 
 pub trait ContainsPoint {
     /// Returns true if the element contains the given point.

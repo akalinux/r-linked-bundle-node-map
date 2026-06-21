@@ -1,18 +1,74 @@
 use crate::{
     CalculatorTrait, Point, PointBox, Transform,
     bsp::{IndexSet, Indexer},
-    link::{Bundle, BunldeOpt, ContainedBy, Link, LinkContainer, LinkOpt, create_container_id},
+    constants::DEFAULT_OPT_NAME,
+    link::{
+        Bundle, BunldeOpt, ContainedBy, Link, LinkContainer, LinkContainerOpt, LinkOpt,
+        create_container_id,
+    },
     node::{Node, NodeOpt},
 };
 use std::collections::HashMap;
+use std::mem;
 use wasm_bindgen::prelude::*;
 
-pub struct Options {
-    pub options: HashMap<String, LinkOpt>,
-    pub bundle_ops: HashMap<String, BunldeOpt>,
-    pub node_opts: HashMap<String, NodeOpt>,
+macro_rules! build_opts {
+    ($t:ty,$field:ident,$get:ident,$set:ident,$del:ident) => {
+        impl Options {
+            pub fn $set(&mut self, opt: $t) -> Option<$t> {
+                return self.$field.insert(String::from(&opt.id), opt);
+            }
+            pub fn $get<'a>(&mut self, id: &String) -> &'a $t {
+                if let Some(v) = self.$field.get(id) {
+                    return unsafe { mem::transmute(v) };
+                } else if let Some(v) = self.$field.get(&String::from(DEFAULT_OPT_NAME)) {
+                    return unsafe { mem::transmute(v) };
+                }
+                // not even the default option exists!
+                let opt = <$t>::defaults();
+                self.$field.insert(opt.id.clone(), opt);
+                return unsafe {
+                    mem::transmute(self.$field.get(&String::from(DEFAULT_OPT_NAME)).unwrap())
+                };
+            }
+            pub fn $del(&mut self, id: &String) -> Option<$t> {
+                return self.$field.remove(id);
+            }
+        }
+        impl Calculator {
+            pub fn $set(&mut self, opt: $t) -> Option<$t> {
+                return self.options.$set(opt);
+            }
+            pub fn $get(&mut self, id: &String) -> &$t {
+                return self.options.$get(id);
+            }
+            pub fn $del(&mut self, id: &String) -> Option<$t> {
+                return self.options.$del(id);
+            }
+        }
+    };
 }
 
+pub struct Options {
+    pub link: HashMap<String, LinkOpt>,
+    pub bundle: HashMap<String, BunldeOpt>,
+    pub node: HashMap<String, NodeOpt>,
+    pub lc: HashMap<String, LinkContainerOpt>,
+}
+impl Options {
+    pub fn new() -> Self {
+        return Self {
+            link: HashMap::new(),
+            bundle: HashMap::new(),
+            node: HashMap::new(),
+            lc: HashMap::new(),
+        };
+    }
+}
+build_opts!(LinkOpt, link, get_link, set_link, rm_link);
+build_opts!(BunldeOpt, bundle, get_bundle, set_bundle, rm_bundle);
+build_opts!(NodeOpt, node, get_node, set_node, rm_node);
+build_opts!(LinkContainerOpt, lc, get_lc, set_lc, rm_lc);
 #[wasm_bindgen]
 pub struct Move {
     pub start: Point,
@@ -133,7 +189,7 @@ pub struct Calculator {
 
 macro_rules! update_link {
     ($self:expr,$lc:expr) => {{
-        $lc.update(&$self.nodes, &$self.options);
+        $lc.update(&$self.nodes, &mut $self.options);
         if $self.drag {
             $self.backlog.links.insert($lc.id, ());
         } else {

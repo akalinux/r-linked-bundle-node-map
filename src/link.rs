@@ -3,7 +3,12 @@ use std::{collections::HashMap, mem, ops::RangeInclusive};
 use wasm_bindgen::prelude::*;
 
 use crate::{
+    GetCenter, Point,
     calc::{NodeStates, Options},
+    constants::{
+        DEFAULT_ANIMATION, DEFAULT_ANIMATION_DASHES, DEFAULT_BUNDLE_COLOR, DEFAULT_COLOR,
+        DEFAULT_LINK_SCALE, DEFAULT_OPT_NAME,
+    },
     node::Node,
 };
 
@@ -29,10 +34,38 @@ pub struct Link {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
+pub struct LinkContainerOpt {
+    pub id: String,
+    pub scale: f64,
+}
+
+impl LinkContainerOpt {
+    pub fn defaults() -> Self {
+        return Self {
+            id: String::from("default"),
+            scale: DEFAULT_LINK_SCALE,
+        };
+    }
+}
+
+#[wasm_bindgen(inspectable)]
+#[wasm_bindgen(getter_with_clone)]
 pub struct LinkOpt {
     pub id: String,
     pub color: String,
     pub animation_color: String,
+    pub animation_dashes: Vec<f64>,
+}
+
+impl LinkOpt {
+    pub fn defaults() -> Self {
+        return Self {
+            id: String::from(DEFAULT_OPT_NAME),
+            color: String::from(DEFAULT_COLOR),
+            animation_color: String::from(DEFAULT_ANIMATION),
+            animation_dashes: Vec::from(DEFAULT_ANIMATION_DASHES),
+        };
+    }
 }
 
 #[wasm_bindgen(inspectable)]
@@ -40,7 +73,17 @@ pub struct LinkOpt {
 pub struct BunldeOpt {
     pub id: String,
     pub color: String,
-    pub src: String,
+    pub img: String,
+}
+
+impl BunldeOpt {
+    pub fn defaults() -> Self {
+        return Self {
+            id: String::from(DEFAULT_OPT_NAME),
+            color: String::from(DEFAULT_BUNDLE_COLOR),
+            img: String::from(""),
+        };
+    }
 }
 
 #[wasm_bindgen(inspectable)]
@@ -82,10 +125,20 @@ impl ContainedBy for Link {
 pub struct LinkContainer {
     pub links: Vec<Link>,
     pub bundles: Vec<Bundle>,
-    pub animations: Vec<u32>,
     pub id: u64,
+    pub opt: String,
     pub mouse_index: Option<(RangeInclusive<u32>, RangeInclusive<u32>)>,
     pub screen_index: Option<(RangeInclusive<u32>, RangeInclusive<u32>)>,
+    pub src_point: Option<Point>,
+    pub dst_point: Option<Point>,
+    pub r: Option<f64>,
+    pub cl: Option<ComputedLinks>,
+}
+
+pub struct ComputedLinks {
+    pub width: f64,
+    pub links: Vec<(Point, Point)>,
+    pub distance: Option<f64>,
 }
 
 pub(crate) fn create_container_id(src: u32, dst: u32) -> u64 {
@@ -99,7 +152,61 @@ pub(crate) fn create_container_id(src: u32, dst: u32) -> u64 {
 }
 
 impl LinkContainer {
-    pub fn update(&mut self, nodes: &NodeStates, ops: &Options) {}
+    pub fn get_min_r(&self, s: &Node, d: &Node) -> f64 {
+        let a = s.get_min_r();
+        let b = d.get_min_r();
+        if a < b {
+            return a;
+        }
+        return b;
+    }
+    pub fn update(&mut self, nodes: &NodeStates, ops: &mut Options) {
+        let (src_id, dst_id) = self.get_node_ids();
+        let src;
+        let dst;
+        if let Some(s) = nodes.get(src_id)
+            && let Some(d) = nodes.get(dst_id)
+        {
+            src = s;
+            dst = s;
+        } else {
+            return;
+        }
+
+        let lc_opt = ops.get_lc(&self.opt);
+        let r = self.get_min_r(src, dst) * lc_opt.scale;
+        if let Some(a) = &self.src_point
+            && let Some(b) = &self.dst_point
+            && let Some(cmp_r) = self.r
+        {
+            let s = src.get_center();
+            let d = dst.get_center();
+            if *a == s && *b == d && cmp_r == r {
+                // we are all ready up to date!
+                return;
+            }
+            self.src_point = Some(s);
+            self.dst_point = Some(d);
+        }
+
+        if !self.links.is_empty() {}
+    }
+
+    pub fn compute_link_segement(&self, src: &Point, dst: &Point, r: f64) -> ComputedLinks {
+        let links = Vec::new();
+        let width = self.compute_line_width(r);
+        // Apply the shifting offset to create movement
+        // ctx.lineDashOffset = offset;
+        let mut distance = None;
+        return ComputedLinks {
+            width,
+            links,
+            distance,
+        };
+    }
+    pub fn compute_line_width(&self, r: f64) -> f64 {
+        return r / (r * 2.0 + 1.0);
+    }
     pub fn mouse_index(
         &mut self,
         idx: i32,
@@ -133,31 +240,22 @@ impl LinkContainer {
             bundles: Vec::new(),
             mouse_index: None,
             screen_index: None,
-            animations: Vec::new(),
+            opt: String::from(DEFAULT_OPT_NAME),
+            src_point: None,
+            dst_point: None,
+            r: None,
+            cl: None,
         };
     }
 
-    pub fn is_animated(&self) -> bool {
-        return !self.animations.is_empty();
+    pub fn clear_points(&mut self) {
+        self.src_point = None;
+        self.dst_point = None;
+        self.r = None;
     }
 
     pub fn add_link(&mut self, link: Link) -> Option<Link> {
-        let mut animated = true;
-        match link.animation {
-            Animation::None => animated = false,
-            _ => (),
-        }
-        for id in self.animations.iter() {
-            if *id == link.id {
-                if animated {
-                    animated = false;
-                    break;
-                }
-            }
-        }
-        if animated {
-            self.animations.push(link.id);
-        }
+        self.clear_points();
         for (id, l) in self.links.iter().enumerate() {
             if l.id == link.id {
                 return Some(mem::replace(&mut self.links[id], link));
@@ -168,6 +266,7 @@ impl LinkContainer {
     }
 
     pub fn add_bundle(&mut self, bundle: Bundle) -> Option<Bundle> {
+        self.clear_points();
         for (id, b) in self.bundles.iter().enumerate() {
             if b.id == b.id {
                 return Some(mem::replace(&mut self.bundles[id], bundle));
@@ -178,12 +277,8 @@ impl LinkContainer {
     }
 
     pub fn remove_link(&mut self, id: u32) -> Option<Link> {
-        for (i, aid) in self.animations.iter().enumerate() {
-            if *aid == id {
-                self.animations.remove(i);
-                break;
-            }
-        }
+        self.clear_points();
+
         for (i, l) in self.links.iter().enumerate() {
             if l.id == id {
                 let res = self.links.remove(i);
@@ -194,6 +289,7 @@ impl LinkContainer {
     }
 
     pub fn remove_bundle(&mut self, id: u32) -> Option<Bundle> {
+        self.clear_points();
         for (i, l) in self.bundles.iter().enumerate() {
             if l.id == id {
                 let res = self.bundles.remove(i);

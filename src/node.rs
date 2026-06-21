@@ -1,6 +1,16 @@
 use wasm_bindgen::prelude::*;
 
-use crate::{CalculatorTrait, ContainsPoint, GetCenter, Point, PointBox};
+use crate::{
+    CalculatorTrait, ContainsPoint, GetCenter, Point, PointBox, constants::DEFAULT_OPT_NAME,
+};
+
+#[wasm_bindgen]
+#[derive(Clone, Copy)]
+pub enum LabelPosition {
+    Top,
+    Bottom,
+    Center,
+}
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct Node {
@@ -17,13 +27,32 @@ pub struct Node {
 #[wasm_bindgen(getter_with_clone)]
 pub struct NodeOpt {
     pub id: String,
-    pub src: String,
+    pub img: String,
     pub color: String,
-    pub layer: u8,
+    pub layer: i8,
+    pub label: LabelPosition,
+}
+
+impl NodeOpt {
+    pub fn defaults() -> Self {
+        return Self {
+            id: String::from(DEFAULT_OPT_NAME),
+            img: String::from(""),
+            color: String::from("DEFAULT_COLOR"),
+            layer: 0,
+            label: LabelPosition::Top,
+        };
+    }
 }
 
 #[wasm_bindgen]
 impl Node {
+    pub fn get_min_r(&self) -> f64 {
+        if self.w < self.h {
+            return self.w;
+        }
+        return self.h;
+    }
     #[wasm_bindgen(constructor)]
     pub fn new(x: f64, y: f64, w: f64, h: f64, id: u32, label: String, opt: String) -> Self {
         return Self {
