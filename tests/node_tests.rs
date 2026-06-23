@@ -11,6 +11,7 @@ fn node_box() {
         0,
         String::from("label"),
         String::from("opt"),
+        Vec::new(),
     );
 
     let (mut nw, mut ne, mut sw, mut se) = node.full_box();

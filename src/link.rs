@@ -1,13 +1,13 @@
-use std::{collections::HashMap, mem, ops::RangeInclusive};
+use std::{mem, ops::RangeInclusive};
 
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    GetCenter, Point,
+    CalculatorTrait, GetCenter, Point, PointBox,
     calc::{NodeStates, Options},
     constants::{
-        DEFAULT_ANIMATION, DEFAULT_ANIMATION_DASHES, DEFAULT_BUNDLE_COLOR, DEFAULT_COLOR,
-        DEFAULT_LINK_SCALE, DEFAULT_OPT_NAME,
+        DEFAULT_ANIMATION, DEFAULT_ANIMATION_DASHES, DEFAULT_ANIMATION_WIDTH_SCALE,
+        DEFAULT_BUNDLE_COLOR, DEFAULT_COLOR, DEFAULT_LINK_SCALE, DEFAULT_OPT_NAME,
     },
     node::Node,
 };
@@ -15,10 +15,10 @@ use crate::{
 #[wasm_bindgen]
 #[derive(Clone, Copy)]
 pub enum Animation {
-    Both, // Animate in both directions
-    Src,  // Animate towards the src node
-    Dst,  // Animate towards the dst node
-    None, // Do not animate
+    Both,  // Animate in both directions
+    ToSrc, // Animate towards the src node
+    ToDst, // Animate towards the dst node
+    None,  // Do not animate
 }
 
 #[wasm_bindgen(inspectable)]
@@ -31,12 +31,12 @@ pub struct Link {
     pub animation: Animation,
     pub label: String,
 }
-
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
 pub struct LinkContainerOpt {
     pub id: String,
     pub scale: f64,
+    pub animation_scale: f64,
 }
 
 impl LinkContainerOpt {
@@ -44,6 +44,7 @@ impl LinkContainerOpt {
         return Self {
             id: String::from("default"),
             scale: DEFAULT_LINK_SCALE,
+            animation_scale: DEFAULT_ANIMATION_WIDTH_SCALE,
         };
     }
 }
@@ -95,6 +96,7 @@ pub struct Bundle {
     pub opt: String,
     pub links: Vec<u32>,
     pub label: String,
+    pub point: Point,
 }
 pub trait ContainedBy {
     fn get_container_id(&self) -> u64 {
@@ -135,12 +137,53 @@ pub struct LinkContainer {
     pub cl: Option<ComputedLinks>,
 }
 
+impl CalculatorTrait for LinkContainer {}
 pub struct ComputedLinks {
     pub width: f64,
-    pub links: Vec<(Point, Point)>,
-    pub distance: Option<f64>,
+    pub links: Vec<ComputedLink>,
+    pub min_x: f64,
+    pub max_x: f64,
+    pub min_y: f64,
+    pub max_y: f64,
+    pub animations: Vec<AnimatedLink>,
 }
 
+impl PointBox for ComputedLinks {
+    fn get_min_x(&self) -> f64 {
+        return self.min_x;
+    }
+
+    fn get_max_x(&self) -> f64 {
+        return self.max_x;
+    }
+
+    fn get_max_y(&self) -> f64 {
+        return self.max_y;
+    }
+
+    fn get_min_y(&self) -> f64 {
+        return self.min_y;
+    }
+}
+
+impl GetCenter for ComputedLinks {
+    fn get_center(&self) -> Point {
+        let x = (self.max_x + self.min_x) * 0.5;
+        let y = (self.max_y + self.min_y) * 0.5;
+        return Point { x, y };
+    }
+}
+
+pub struct ComputedLink {
+    pub src: Point,
+    pub dst: Point,
+}
+
+pub struct AnimatedLink {
+    pub src: Point,
+    pub dst: Point,
+    pub width: f64,
+}
 pub(crate) fn create_container_id(src: u32, dst: u32) -> u64 {
     let id: u64;
     if src < dst {
@@ -168,13 +211,12 @@ impl LinkContainer {
             && let Some(d) = nodes.get(dst_id)
         {
             src = s;
-            dst = s;
+            dst = d;
         } else {
             return;
         }
 
-        let lc_opt = ops.get_lc(&self.opt);
-        let r = self.get_min_r(src, dst) * lc_opt.scale;
+        let r = self.get_min_r(src, dst);
         if let Some(a) = &self.src_point
             && let Some(b) = &self.dst_point
             && let Some(cmp_r) = self.r
@@ -187,25 +229,132 @@ impl LinkContainer {
             }
             self.src_point = Some(s);
             self.dst_point = Some(d);
+            // todo
+            //let lc_opt = ops.get_lc(&self.opt);
         }
 
         if !self.links.is_empty() {}
     }
 
-    pub fn compute_link_segement(&self, src: &Point, dst: &Point, r: f64) -> ComputedLinks {
-        let links = Vec::new();
-        let width = self.compute_line_width(r);
+    pub fn compute_link_segement(
+        &self,
+        src: &Point,
+        dst: &Point,
+        r: f64,
+        src_id: u32,
+        link_scale: f64,
+    ) -> ComputedLinks {
+        let mut links = Vec::new();
         // Apply the shifting offset to create movement
         // ctx.lineDashOffset = offset;
-        let mut distance = None;
+
+        let base_angle = self.get_angle(src.x, src.y, dst.x, dst.y);
+        let angle_north = base_angle + 90.0;
+        let angle_south = angle_north + 180.0;
+
+        // true outer points
+        let mut ne = self.get_xy(src.x, src.y, r, angle_north);
+        let mut nw = self.get_xy(dst.x, dst.y, r, angle_north);
+        let se = self.get_xy(src.x, src.y, r, angle_south);
+        let sw = self.get_xy(dst.x, dst.y, r, angle_south);
+        let mut min_x = ne.x;
+        let mut max_x = ne.x;
+        let mut min_y = ne.y;
+        let mut max_y = ne.y;
+        for p in [nw, sw, se] {
+            if max_x < p.x {
+                max_x = p.x;
+            }
+            if max_y < p.y {
+                max_y = p.y;
+            }
+            if min_x > p.x {
+                min_x = p.x;
+            }
+            if min_y > p.y {
+                min_y = p.y;
+            }
+        }
+
+        ne = self.get_xy(ne.x, ne.y, r, base_angle + 180.0);
+        nw = self.get_xy(nw.x, nw.y, r, base_angle);
+        let (width, step, init_step) =
+            self.compute_line_width(link_scale, r * 2.0, self.links.len());
+        let mut animations = Vec::new();
+        for (i, link) in self.links.iter().enumerate() {
+            let inc_by = init_step + step * (i as f64);
+            let start = self.get_xy(ne.x, ne.y, inc_by, angle_south);
+            let end = self.get_xy(nw.x, nw.y, inc_by, angle_south);
+            let clink;
+            if src_id == link.src {
+                clink = ComputedLink {
+                    src: start,
+                    dst: end,
+                }
+            } else {
+                clink = ComputedLink {
+                    src: end,
+                    dst: start,
+                }
+            }
+            match link.animation {
+                Animation::None => (),
+                Animation::Both => {
+                    let (aw, _, init_step) = self.compute_line_width(1.0, width, 2);
+
+                    animations.push(AnimatedLink {
+                        src: self.get_xy(clink.src.x, clink.src.y, init_step, angle_north),
+                        dst: self.get_xy(clink.dst.x, clink.dst.y, init_step, angle_north),
+                        width: aw,
+                    });
+                    animations.push(AnimatedLink {
+                        src: self.get_xy(clink.dst.x, clink.dst.y, init_step, angle_south),
+                        dst: self.get_xy(clink.src.x, clink.src.y, init_step, angle_south),
+                        width: aw,
+                    });
+                }
+                Animation::ToSrc => {
+                    let (aw, _, _) = self.compute_line_width(1.0, width, 1);
+                    animations.push(AnimatedLink {
+                        src: clink.dst,
+                        dst: clink.src,
+                        width: aw,
+                    });
+                }
+                Animation::ToDst => {
+                    let (aw, _, _) = self.compute_line_width(1.0, width, 1);
+                    animations.push(AnimatedLink {
+                        src: clink.src,
+                        dst: clink.dst,
+                        width: aw,
+                    });
+                }
+            }
+            links.push(clink);
+        }
+
         return ComputedLinks {
             width,
             links,
-            distance,
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+            animations,
         };
     }
-    pub fn compute_line_width(&self, r: f64) -> f64 {
-        return r / (r * 2.0 + 1.0);
+    pub fn compute_line_width(&self, link_scale: f64, r: f64, nodes: usize) -> (f64, f64, f64) {
+        let offset;
+        if nodes == 1 {
+            offset = 0.0;
+        } else {
+            offset = -1.0
+        }
+        let lc = offset + 2.0 * (nodes as f64);
+        let scaled = r * link_scale;
+        let width = scaled / lc;
+        let step = scaled / (nodes as f64);
+        return (width, step, step * 0.5);
     }
     pub fn mouse_index(
         &mut self,

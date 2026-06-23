@@ -119,6 +119,7 @@ pub struct NodeStates {
     nodes: HashMap<u32, Node>,
     node_counter: u64,
     order: HashMap<u32, u64>,
+    linked: HashMap<u32, HashMap<u32, ()>>,
 }
 
 impl NodeStates {
@@ -128,6 +129,7 @@ impl NodeStates {
             nodes: HashMap::new(),
             node_counter: 0,
             order: HashMap::new(),
+            linked: HashMap::new(),
         };
     }
 
@@ -135,9 +137,23 @@ impl NodeStates {
         self.updates.remove(&node.id);
         let id = node.id;
         let res = self.nodes.insert(node.id, node);
-        if res.is_none() {
+        if let Some(old) = &res {
+            for oid in &old.linked {
+                if let Some(linked) = self.linked.get_mut(&oid) {
+                    linked.remove(&old.id);
+                    if linked.is_empty() {
+                        self.linked.remove(&oid);
+                    }
+                }
+            }
+        } else {
             self.order.insert(id, self.node_counter);
             self.node_counter += 1;
+        }
+        for lid in &self.nodes.get(&id).unwrap().linked {
+            if let Some(linked) = self.linked.get_mut(lid) {
+                linked.insert(id, ());
+            }
         }
         return res;
     }

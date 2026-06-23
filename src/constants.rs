@@ -12,7 +12,7 @@ pub const FULL_CIRCLE: f64 = 2.0 * PI;
 pub const DEFAULT_NODE_R: f64 = 12.0;
 
 /// how much to scale a link down to relative to the size of a node.
-pub const DEFAULT_LINK_SCALE: f64 = 0.96;
+pub const DEFAULT_LINK_SCALE: f64 = 1.0;
 
 /// Default name for options.
 pub const DEFAULT_OPT_NAME: &'static str = "defaults";
@@ -27,3 +27,4 @@ pub const DEFAULT_ANIMATION: &'static str = "#9319cc";
 pub const DEFAULT_HIGHLIGHT: &'static str = "#d4d4d468";
 
 pub const DEFAULT_ANIMATION_DASHES: [f64; 2] = [5.0, 15.0];
+pub const DEFAULT_ANIMATION_WIDTH_SCALE: f64 = 0.3;

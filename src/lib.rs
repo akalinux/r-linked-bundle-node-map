@@ -1,4 +1,4 @@
-use std::{f64::consts::PI, ops::RangeInclusive};
+use std::ops::RangeInclusive;
 use wasm_bindgen::prelude::*;
 
 use crate::constants::{RAD2DEG, TRIANGLE_MARGINE_FOR_ERROR};
@@ -119,11 +119,6 @@ pub trait PointBox {
 }
 
 pub trait CalculatorTrait {
-    /// Converts degree to radians
-    fn rad(&self, degree: f64) -> f64 {
-        return degree * PI / 180.0;
-    }
-
     fn get_angle(&self, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
         let dx = x1 - x2;
         let dy = y1 - y2;
@@ -143,7 +138,7 @@ pub trait CalculatorTrait {
     }
 
     fn get_xy(&self, cx: f64, cy: f64, r: f64, degree: f64) -> Point {
-        let rad = self.rad(degree);
+        let rad = degree.to_radians();
 
         let x = cx + r * rad.cos();
         let y = cy + r * rad.sin();

@@ -18,6 +18,7 @@ USER node
 RUN COREPACK_ENABLE_DOWNLOAD_PROMPT=0 yarn set version stable
 RUN rustup default stable 
 RUN rustup update
+RUN cargo install --locked cargo-vet
 USER root
 RUN curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
 #RUN rustup docs --book 

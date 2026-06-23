@@ -21,6 +21,7 @@ pub struct Node {
     pub id: u32,
     pub label: String,
     pub opt: String,
+    pub linked: Vec<u32>,
 }
 
 #[wasm_bindgen(inspectable)]
@@ -54,7 +55,16 @@ impl Node {
         return self.h;
     }
     #[wasm_bindgen(constructor)]
-    pub fn new(x: f64, y: f64, w: f64, h: f64, id: u32, label: String, opt: String) -> Self {
+    pub fn new(
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        id: u32,
+        label: String,
+        opt: String,
+        linked: Vec<u32>,
+    ) -> Self {
         return Self {
             x,
             y,
@@ -63,6 +73,7 @@ impl Node {
             id,
             label,
             opt,
+            linked,
         };
     }
 
@@ -75,6 +86,7 @@ impl Node {
             self.id,
             String::from(&self.label),
             String::from(&self.opt),
+            self.linked.clone(),
         );
     }
 }
