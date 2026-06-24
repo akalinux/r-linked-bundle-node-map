@@ -214,7 +214,6 @@ macro_rules! update_link {
         {
             $self.animation_order.insert(*lo, $lc.id);
         }
-
         if $self.drag {
             $self.backlog.links.insert($lc.id, ());
         } else {
@@ -249,6 +248,16 @@ impl Calculator {
         if let Some(l) = self.links.get(&id) {
             if !l.is_empty() {
                 return;
+            }
+            self.link_order.remove(&id);
+            self.animation_order.remove(&id);
+            if let Some((x, y)) = &l.mouse_index {
+                self.link_index_mouse
+                    .update(id, (Some((x.clone(), y.clone())), None));
+            }
+            if let Some((x, y)) = &l.screen_index {
+                self.link_index_screen
+                    .update(id, (Some((x.clone(), y.clone())), None));
             }
             let (src, dst) = l.get_node_ids();
             for n in [src, dst] {
