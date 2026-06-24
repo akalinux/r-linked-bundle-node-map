@@ -33,6 +33,13 @@ impl Point {
         self.x += p.x;
         self.y += p.y;
     }
+
+    pub fn compute_center(&self, p: &Point) -> Point {
+        return Point {
+            x: (self.x + p.x) * 0.5,
+            y: (self.y + p.y) * 0.5,
+        };
+    }
 }
 
 impl GetCenter for Point {

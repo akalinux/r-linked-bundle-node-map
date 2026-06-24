@@ -69,7 +69,7 @@ build_opts!(LinkOpt, link, get_link, set_link, rm_link);
 build_opts!(BunldeOpt, bundle, get_bundle, set_bundle, rm_bundle);
 build_opts!(NodeOpt, node, get_node, set_node, rm_node);
 build_opts!(LinkContainerOpt, lc, get_lc, set_lc, rm_lc);
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 pub struct Move {
     pub start: Point,
 }
@@ -190,6 +190,7 @@ pub struct Calculator {
 
     links: HashMap<u64, LinkContainer>,
     link_order: HashMap<u64, u64>,
+    animation_order: HashMap<u64, u64>,
     link_mouse_bound: i32,
     screen_bound: i32,
     options: Options,
@@ -205,7 +206,15 @@ pub struct Calculator {
 
 macro_rules! update_link {
     ($self:expr,$lc:expr) => {{
+        let lo = $self.link_order.get(&$lc.id).unwrap();
+        $self.animation_order.remove(lo);
         $lc.update(&$self.nodes, &mut $self.options);
+        if let Some(cl) = &$lc.cl
+            && cl.animations.len() != 0
+        {
+            $self.animation_order.insert(*lo, $lc.id);
+        }
+
         if $self.drag {
             $self.backlog.links.insert($lc.id, ());
         } else {

@@ -96,7 +96,6 @@ pub struct Bundle {
     pub opt: String,
     pub links: Vec<u32>,
     pub label: String,
-    pub point: Point,
 }
 pub trait ContainedBy {
     fn get_container_id(&self) -> u64 {
@@ -344,17 +343,56 @@ impl LinkContainer {
         };
     }
     pub fn compute_line_width(&self, link_scale: f64, r: f64, nodes: usize) -> (f64, f64, f64) {
-        let offset;
-        if nodes == 1 {
-            offset = 0.0;
-        } else {
-            offset = -1.0
-        }
-        let lc = offset + 2.0 * (nodes as f64);
+        let lc = self.compute_node_scale(nodes) as f64;
         let scaled = r * link_scale;
         let width = scaled / lc;
         let step = scaled / (nodes as f64);
         return (width, step, step * 0.5);
+    }
+
+    pub fn compute_node_scale(&self, nodes: usize) -> usize {
+        let offset;
+        if nodes == 1 {
+            offset = 0;
+        } else {
+            offset = 1
+        }
+        return 2 * nodes - offset;
+    }
+
+    pub fn compute_bunlde_points(&self, src: &Point, dst: &Point, bundles: usize) -> Vec<Point> {
+        let center = src.compute_center(dst);
+        if bundles < 4 {
+            // quick and dirty optimization for up to 3 bundles..
+            match bundles {
+                // just dead center
+                1 => return Vec::from([center]),
+                // left of start, right of end
+                2 => return Vec::from([src.compute_center(&center), dst.compute_center(&center)]),
+                // left of start, cetner, right of end.
+                3 => {
+                    return Vec::from([
+                        src.compute_center(&center),
+                        center,
+                        dst.compute_center(&center),
+                    ]);
+                }
+                _ => (),
+            }
+        }
+        // From here on out it is simply cheaper to compute the distance and plot each point.
+        let mut sets = Vec::new();
+        let distance = self.get_distance(src.x, src.y, dst.x, dst.y);
+        let bc = self.compute_node_scale(bundles);
+        let width = distance / ((bc as f64) + 2.0);
+
+        let angle = self.get_angle(src.x, src.y, dst.x, dst.y) + 180.0;
+        for i in 0..bundles {
+            let r = width + ((i as f64) * 2.0 * width);
+            sets.push(self.get_xy(src.x, src.y, r, angle));
+        }
+
+        return sets;
     }
     pub fn mouse_index(
         &mut self,

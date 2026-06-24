@@ -114,3 +114,47 @@ fn compute_link_tests() {
     assert_relative_eq!(cu.links[2].dst.x as f32, 8.0);
     assert_relative_eq!(cu.links[2].dst.y as f32, 1.33, epsilon = 0.009);
 }
+
+#[test]
+fn compute_bundle_tests() {
+    let lc = LinkContainer::new(0, 1);
+
+    // does not require distance
+    // 0 1 2
+    //   1
+    let mut sets =
+        lc.compute_bunlde_points(&Point { x: 0.0, y: 0.0 }, &Point { x: 2.0, y: 0.0 }, 1);
+    assert_eq!(sets.len(), 1);
+    assert_eq!(sets[0], Point { x: 1.0, y: 0.0 });
+
+    // does not require distance
+    //  0 1 2 3 4
+    //    1   2
+    sets = lc.compute_bunlde_points(&Point { x: 0.0, y: 0.0 }, &Point { x: 4.0, y: 0.0 }, 2);
+    assert_eq!(sets.len(), 2);
+    assert_eq!(sets[0], Point { x: 1.0, y: 0.0 });
+    assert_eq!(sets[1], Point { x: 3.0, y: 0.0 });
+
+    // does not require distance
+    //  0 1 2 3 4 5 6
+    //    1   2   3
+    sets = lc.compute_bunlde_points(&Point { x: 0.0, y: 0.0 }, &Point { x: 6.0, y: 0.0 }, 3);
+    assert_eq!(sets.len(), 3);
+    assert_eq!(sets[0], Point { x: 1.5, y: 0.0 });
+    assert_eq!(sets[1], Point { x: 3.0, y: 0.0 });
+    assert_eq!(sets[2], Point { x: 4.5, y: 0.0 });
+
+    // requires distance
+    //  0 1 2 3 4 5 6 7 8
+    //    0   1   3   4
+    sets = lc.compute_bunlde_points(&Point { x: 0.0, y: 0.0 }, &Point { x: 9.0, y: 0.0 }, 4);
+    assert_eq!(sets.len(), 4);
+    assert_relative_eq!(sets[0].x, 1.0, epsilon = 0.009);
+    assert_relative_eq!(sets[0].y as f32, 0.0, epsilon = 0.009);
+    assert_relative_eq!(sets[1].x, 3.0, epsilon = 0.009);
+    assert_relative_eq!(sets[1].y as f32, 0.0, epsilon = 0.009);
+    assert_relative_eq!(sets[2].x, 5.0, epsilon = 0.009);
+    assert_relative_eq!(sets[2].y as f32, 0.0, epsilon = 0.009);
+    assert_relative_eq!(sets[3].x, 7.0, epsilon = 0.009);
+    assert_relative_eq!(sets[3].y as f32, 0.0, epsilon = 0.009);
+}
