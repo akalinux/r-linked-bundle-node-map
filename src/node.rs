@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use wasm_bindgen::prelude::*;
 
 use crate::{
@@ -121,5 +123,41 @@ impl PointBox for Node {
 
     fn get_min_y(&self) -> f64 {
         return self.y - self.h * 0.5;
+    }
+}
+
+pub struct NodeStates {
+    updates: HashMap<u32, Node>,
+    nodes: HashMap<u32, Node>,
+}
+
+impl NodeStates {
+    pub fn new() -> Self {
+        return Self {
+            updates: HashMap::new(),
+            nodes: HashMap::new(),
+        };
+    }
+
+    pub fn insert(&mut self, node: Node) -> Option<Node> {
+        self.updates.remove(&node.id);
+        return self.nodes.insert(node.id, node);
+    }
+
+    pub fn remove(&mut self, id: u32) -> Option<Node> {
+        self.updates.remove(&id);
+        return self.nodes.remove(&id);
+    }
+    pub fn update(&mut self, node: Node) -> Option<Node> {
+        return self.updates.insert(node.id, node);
+    }
+
+    pub fn get(&self, id: u32) -> Option<&Node> {
+        if let Some(node) = self.updates.get(&id) {
+            return Some(node);
+        } else if let Some(node) = self.nodes.get(&id) {
+            return Some(node);
+        }
+        return None;
     }
 }

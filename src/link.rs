@@ -4,12 +4,13 @@ use wasm_bindgen::prelude::*;
 
 use crate::{
     CalculatorTrait, GetCenter, Point, PointBox,
-    calc::{NodeStates, Options},
+    bsp::IndexSet,
+    calc::Options,
     constants::{
         DEFAULT_ANIMATION, DEFAULT_ANIMATION_DASHES, DEFAULT_ANIMATION_WIDTH_SCALE,
         DEFAULT_BUNDLE_COLOR, DEFAULT_COLOR, DEFAULT_LINK_SCALE, DEFAULT_OPT_NAME,
     },
-    node::Node,
+    node::{Node, NodeStates},
 };
 
 #[wasm_bindgen]
@@ -394,23 +395,11 @@ impl LinkContainer {
 
         return sets;
     }
-    pub fn mouse_index(
-        &mut self,
-        idx: i32,
-    ) -> (
-        Option<(RangeInclusive<i32>, RangeInclusive<i32>)>,
-        Option<(RangeInclusive<i32>, RangeInclusive<i32>)>,
-    ) {
+    pub fn mouse_index(&mut self, idx: i32, new: bool) -> IndexSet {
         return (None, None);
     }
 
-    pub fn screen_index(
-        &mut self,
-        idx: i32,
-    ) -> (
-        Option<(RangeInclusive<i32>, RangeInclusive<i32>)>,
-        Option<(RangeInclusive<i32>, RangeInclusive<i32>)>,
-    ) {
+    pub fn screen_index(&mut self, idx: i32, new: bool) -> IndexSet {
         return (None, None);
     }
     pub fn is_empty(&self) -> bool {
