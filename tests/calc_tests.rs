@@ -8,25 +8,16 @@ use linked_bundle_node_map::{
 #[test]
 fn option_tests() {
     let mut opt = Options::new();
-    assert_eq!(
-        opt.get_node(&String::from("Does not exist")).id,
-        NodeOpt::defaults().id
-    );
+    assert_eq!(opt.get_node(&1).id, NodeOpt::defaults().id);
     opt.set_node(NodeOpt {
-        id: String::from("Does not exist"),
+        id: 1,
+        label: String::from("Does not exist"),
         img: String::from(""),
         color: String::from("pink"),
-        layer: -1,
-        label: LabelPosition::Bottom,
+        label_position: LabelPosition::Bottom,
     });
-    assert_eq!(
-        opt.get_node(&String::from("Does not exist")).id,
-        String::from("Does not exist")
-    );
-    opt.rm_node(&String::from("Does not exist"));
+    assert_eq!(opt.get_node(&1).id, 1,);
+    opt.rm_node(&1);
 
-    assert_eq!(
-        opt.get_node(&String::from("Does not exist")).id,
-        NodeOpt::defaults().id,
-    );
+    assert_eq!(opt.get_node(&1).id, NodeOpt::defaults().id,);
 }

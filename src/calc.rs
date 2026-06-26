@@ -1,9 +1,9 @@
 use crate::{
     CalculatorTrait, Point, Transform,
     bsp::Indexers,
-    constants::DEFAULT_OPT_NAME,
+    constants::DEFAULT_NODE_R,
     link::{
-        Bundle, BunldeOpt, ContainedBy, Link, LinkContainer, LinkContainerOpt, LinkOpt,
+        Bundle, BunldeOpt, Link, LinkContainer, LinkContainerOpt, LinkOpt, SrcDstIs,
         create_container_id,
     },
     node::{Node, NodeOpt, NodeStates},
@@ -17,10 +17,10 @@ pub struct BacklogUpdates {
     pub links: HashMap<u64, ()>,
 }
 impl BacklogUpdates {
-    pub fn new() -> Self {
+    pub fn new(size: usize) -> Self {
         return Self {
-            nodes: HashMap::new(),
-            links: HashMap::new(),
+            nodes: HashMap::with_capacity(size),
+            links: HashMap::with_capacity(size * 4),
         };
     }
 
@@ -33,22 +33,20 @@ macro_rules! build_opts {
     ($t:ty,$field:ident,$get:ident,$set:ident,$del:ident) => {
         impl Options {
             pub fn $set(&mut self, opt: $t) -> Option<$t> {
-                return self.$field.insert(String::from(&opt.id), opt);
+                return self.$field.insert(opt.id, opt);
             }
-            pub fn $get<'a>(&mut self, id: &String) -> &'a $t {
+            pub fn $get<'a>(&mut self, id: &u32) -> &'a $t {
                 if let Some(v) = self.$field.get(id) {
                     return unsafe { mem::transmute(v) };
-                } else if let Some(v) = self.$field.get(&String::from(DEFAULT_OPT_NAME)) {
+                } else if let Some(v) = self.$field.get(&0) {
                     return unsafe { mem::transmute(v) };
                 }
                 // not even the default option exists!
                 let opt = <$t>::defaults();
                 self.$field.insert(opt.id.clone(), opt);
-                return unsafe {
-                    mem::transmute(self.$field.get(&String::from(DEFAULT_OPT_NAME)).unwrap())
-                };
+                return unsafe { mem::transmute(self.$field.get(&0).unwrap()) };
             }
-            pub fn $del(&mut self, id: &String) -> Option<$t> {
+            pub fn $del(&mut self, id: &u32) -> Option<$t> {
                 return self.$field.remove(id);
             }
         }
@@ -56,10 +54,10 @@ macro_rules! build_opts {
             pub fn $set(&mut self, opt: $t) -> Option<$t> {
                 return self.options.$set(opt);
             }
-            pub fn $get(&mut self, id: &String) -> &$t {
+            pub fn $get(&mut self, id: &u32) -> &$t {
                 return self.options.$get(id);
             }
-            pub fn $del(&mut self, id: &String) -> Option<$t> {
+            pub fn $del(&mut self, id: &u32) -> Option<$t> {
                 return self.options.$del(id);
             }
         }
@@ -67,18 +65,18 @@ macro_rules! build_opts {
 }
 
 pub struct Options {
-    pub link: HashMap<String, LinkOpt>,
-    pub bundle: HashMap<String, BunldeOpt>,
-    pub node: HashMap<String, NodeOpt>,
-    pub lc: HashMap<String, LinkContainerOpt>,
+    pub link: HashMap<u32, LinkOpt>,
+    pub bundle: HashMap<u32, BunldeOpt>,
+    pub node: HashMap<u32, NodeOpt>,
+    pub lc: HashMap<u32, LinkContainerOpt>,
 }
 impl Options {
     pub fn new() -> Self {
         return Self {
-            link: HashMap::new(),
-            bundle: HashMap::new(),
-            node: HashMap::new(),
-            lc: HashMap::new(),
+            link: HashMap::with_capacity(10),
+            bundle: HashMap::with_capacity(10),
+            node: HashMap::with_capacity(10),
+            lc: HashMap::with_capacity(10),
         };
     }
 }
@@ -86,31 +84,6 @@ build_opts!(LinkOpt, link, get_link, set_link, rm_link);
 build_opts!(BunldeOpt, bundle, get_bundle, set_bundle, rm_bundle);
 build_opts!(NodeOpt, node, get_node, set_node, rm_node);
 build_opts!(LinkContainerOpt, lc, get_lc, set_lc, rm_lc);
-#[wasm_bindgen(inspectable)]
-pub struct Move {
-    pub start: Point,
-}
-
-#[wasm_bindgen]
-impl Move {
-    #[wasm_bindgen(constructor)]
-    pub fn new(p: &Point) -> Self {
-        let res = Self { start: *p };
-
-        return res;
-    }
-    pub fn stop(&mut self, p: &Point) -> Point {
-        let diff = Point {
-            x: p.x - self.start.x,
-            y: p.y - self.start.y,
-        };
-        self.start = *p;
-
-        return diff;
-    }
-}
-
-impl CalculatorTrait for Move {}
 
 #[wasm_bindgen]
 pub struct Calculator {
@@ -125,6 +98,8 @@ pub struct Calculator {
     indexer: Indexers,
 }
 
+impl CalculatorTrait for Calculator {}
+
 macro_rules! cul_lc {
     ($self:ident,$lid:ident) => {{
         if $self.links.get(&$lid).unwrap().is_empty() {
@@ -138,7 +113,7 @@ macro_rules! cul_lc {
             }
         } else {
             let lc = $self.links.get_mut(&$lid).unwrap();
-            lc.update(&$self.nodes, &mut $self.options);
+            lc.update(&$self.nodes, &mut $self.options, &mut $self.animations);
             $self.indexer.add_link(lc);
         }
     }};
@@ -146,6 +121,29 @@ macro_rules! cul_lc {
 
 #[wasm_bindgen]
 impl Calculator {
+    #[wasm_bindgen(constructor)]
+    pub fn new(node_mouse_b: i32, link_mouse_b: i32, screen_mouse_b: i32, size: usize) -> Self {
+        return Self {
+            links: HashMap::with_capacity(size * 4),
+            animations: HashMap::with_capacity(size * 4),
+            node_links: HashMap::with_capacity(size),
+            nodes: NodeStates::new(size),
+            backlog: BacklogUpdates::new(size),
+            indexer: Indexers::new(node_mouse_b, link_mouse_b, screen_mouse_b, size / 32),
+            options: Options::new(),
+            transform: Transform {
+                x: 0.0,
+                y: 0.0,
+                k: 1.0,
+            },
+        };
+    }
+    pub fn from_defaults() -> Self {
+        let mouse_b = (DEFAULT_NODE_R as i32) * 4;
+        let link_b = mouse_b * 4;
+        let screen_b = link_b * 4;
+        return Self::new(mouse_b, link_b, screen_b, 256);
+    }
     pub fn get_transform(&self) -> Transform {
         return self.transform;
     }
@@ -174,7 +172,7 @@ impl Calculator {
                 continue;
             }
             known.insert(*lid, ());
-            link.update(&self.nodes, &mut self.options);
+            link.update(&self.nodes, &mut self.options, &mut self.animations);
         }
     }
 

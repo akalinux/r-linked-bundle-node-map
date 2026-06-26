@@ -2,7 +2,7 @@
 
 use linked_bundle_node_map::{
     CalculatorTrait, GetCenter, Point,
-    link::{Animation, Link, LinkContainer},
+    link::{Animation, Link, LinkContainer, LinkContainerOpt},
 };
 
 use approx::assert_relative_eq;
@@ -28,6 +28,7 @@ fn validate_get_xy() {
 #[test]
 fn compute_link_tests() {
     let mut lc = LinkContainer::new(0, 1);
+    let lc_opt = LinkContainerOpt::defaults();
     lc.add_link(Link {
         id: 0,
         src: 0,
@@ -41,7 +42,7 @@ fn compute_link_tests() {
         &Point { x: 10.0, y: 0.0 },
         2.0,
         0,
-        1.0,
+        &lc_opt,
     );
     assert_eq!(cu.get_center(), Point { x: 5.0, y: 0.0 });
     assert_relative_eq!(cu.width, 2.0);
@@ -68,7 +69,7 @@ fn compute_link_tests() {
         &Point { x: 10.0, y: 0.0 },
         2.0,
         0,
-        1.0,
+        &lc_opt,
     );
 
     assert_eq!(cu.get_center(), Point { x: 5.0, y: 0.0 });
@@ -95,7 +96,7 @@ fn compute_link_tests() {
         &Point { x: 10.0, y: 0.0 },
         2.0,
         0,
-        1.0,
+        &lc_opt,
     );
     assert_eq!(lc.links.len(), 3);
     assert_relative_eq!(cu.width, 0.8, epsilon = 0.0009);
@@ -157,4 +158,62 @@ fn compute_bundle_tests() {
     assert_relative_eq!(sets[2].y as f32, 0.0, epsilon = 0.009);
     assert_relative_eq!(sets[3].x, 7.0, epsilon = 0.009);
     assert_relative_eq!(sets[3].y as f32, 0.0, epsilon = 0.009);
+}
+
+#[test]
+fn animation_tests() {
+    let mut lc = LinkContainer::new(0, 1);
+    let lc_opt = LinkContainerOpt::defaults();
+    lc.add_link(Link {
+        id: 0,
+        src: 0,
+        dst: 1,
+        opt: String::from("defaults"),
+        animation: Animation::ToSrc,
+        label: String::from("test link 1"),
+    });
+
+    let src = Point { x: 0.0, y: 0.0 };
+    let dst = Point { x: 10.0, y: 0.0 };
+    let mut cu = lc.compute_link_segement(&src, &dst, 2.0, 0, &lc_opt);
+
+    assert_eq!(cu.animations.len(), 1);
+    assert_relative_eq!(cu.animations[0].src.x, dst.x - 2.0);
+    assert_relative_eq!(cu.animations[0].src.y, dst.y);
+    assert_relative_eq!(cu.animations[0].dst.x, src.x + 2.0);
+    assert_relative_eq!(cu.animations[0].dst.y, src.y, epsilon = 0.01);
+    assert_relative_eq!(cu.animations[0].width, cu.width * 0.5);
+    lc.add_link(Link {
+        id: 0,
+        src: 1,
+        dst: 0,
+        opt: String::from("defaults"),
+        animation: Animation::ToSrc,
+        label: String::from("test link 1"),
+    });
+
+    cu = lc.compute_link_segement(&src, &dst, 2.0, 0, &lc_opt);
+    assert_relative_eq!(cu.animations[0].src.x, src.x + 2.0);
+    assert_relative_eq!(cu.animations[0].src.y, src.y, epsilon = 0.01);
+    assert_relative_eq!(cu.animations[0].dst.x, dst.x - 2.0);
+    assert_relative_eq!(cu.animations[0].dst.y, dst.y, epsilon = 0.01);
+    assert_relative_eq!(cu.animations[0].width, cu.width * 0.5);
+    lc.add_link(Link {
+        id: 0,
+        src: 0,
+        dst: 1,
+        opt: String::from("defaults"),
+        animation: Animation::Both,
+        label: String::from("test link 1"),
+    });
+    cu = lc.compute_link_segement(&src, &dst, 2.0, 0, &lc_opt);
+    assert_relative_eq!(cu.animations[0].width, cu.width * 0.3, epsilon = 0.09);
+    assert_relative_eq!(cu.animations[1].width, cu.width * 0.3, epsilon = 0.09);
+    assert_relative_eq!(cu.animations[0].src.x, src.x + 2.0);
+    assert_relative_eq!(cu.animations[0].dst.x, dst.x - 2.0);
+    let offset = 0.5;
+    assert_relative_eq!(cu.animations[0].dst.y, offset * -1.0, epsilon = 0.02);
+    assert_relative_eq!(cu.animations[0].src.y, offset * -1.0, epsilon = 0.02);
+    assert_relative_eq!(cu.animations[1].dst.y, offset, epsilon = 0.02);
+    assert_relative_eq!(cu.animations[1].src.y, offset, epsilon = 0.02);
 }

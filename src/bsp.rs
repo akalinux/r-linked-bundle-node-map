@@ -1,16 +1,12 @@
-use std::{collections::BTreeMap, collections::HashMap, hash::Hash, ops::RangeInclusive};
-
 use crate::{PointBox, link::LinkContainer, node::Node};
+use std::{collections::BTreeMap, collections::HashMap, hash::Hash, ops::RangeInclusive};
 
 pub type IndexPart = Option<(RangeInclusive<i32>, RangeInclusive<i32>)>;
 pub type IndexSet = (IndexPart, IndexPart);
+
 pub struct MouseIndex<T: Eq + PartialEq + Hash> {
     pub step: i32,
     pub idx_x: HashMap<i32, HashMap<i32, BTreeMap<T, ()>>>,
-}
-
-pub trait Indexable {
-    fn index_step(&mut self, step: i32) -> IndexSet;
 }
 
 pub struct ScreenBoundY {
@@ -24,9 +20,9 @@ pub struct ScreenIndex {
 }
 
 impl ScreenIndex {
-    pub fn new(step: i32) -> Self {
+    pub fn new(step: i32, size: usize) -> Self {
         return Self {
-            x: HashMap::new(),
+            x: HashMap::with_capacity(size),
             step,
         };
     }
@@ -104,8 +100,8 @@ pub struct Indexers {
     pub node_mouse_idx: MouseIndex<u32>,
     pub link_mouse_idx: MouseIndex<u64>,
     pub screen_index: ScreenIndex,
-    node_check: IsIndexed<u32>,
-    link_check: IsIndexed<u64>,
+    pub node_check: IsIndexed<u32>,
+    pub link_check: IsIndexed<u64>,
 }
 
 pub struct IsIndexed<T: Eq + PartialEq + Hash + Copy + Clone> {
@@ -113,10 +109,10 @@ pub struct IsIndexed<T: Eq + PartialEq + Hash + Copy + Clone> {
     mouse: HashMap<T, ()>,
 }
 impl<T: Eq + PartialEq + Hash + Copy + Clone> IsIndexed<T> {
-    pub fn new() -> Self {
+    pub fn new(size: usize) -> Self {
         return Self {
-            screen: HashMap::new(),
-            mouse: HashMap::new(),
+            screen: HashMap::with_capacity(size),
+            mouse: HashMap::with_capacity(size),
         };
     }
     pub fn clear(&mut self, t: T) {
@@ -148,13 +144,13 @@ impl<T: Eq + PartialEq + Hash + Copy + Clone> IsIndexed<T> {
 }
 
 impl Indexers {
-    pub fn new(nmb: i32, lmb: i32, sb: i32) -> Self {
+    pub fn new(node_mouse_b: i32, link_mouse_b: i32, screen_mouse_b: i32, size: usize) -> Self {
         return Self {
-            link_mouse_idx: MouseIndex::new(lmb),
-            node_mouse_idx: MouseIndex::new(nmb),
-            screen_index: ScreenIndex::new(sb),
-            node_check: IsIndexed::new(),
-            link_check: IsIndexed::new(),
+            link_mouse_idx: MouseIndex::new(link_mouse_b, size * 8),
+            node_mouse_idx: MouseIndex::new(node_mouse_b, size * 32),
+            screen_index: ScreenIndex::new(screen_mouse_b, size),
+            node_check: IsIndexed::new(size * 64),
+            link_check: IsIndexed::new(size * 64),
         };
     }
 
@@ -246,10 +242,10 @@ impl Indexers {
 }
 
 impl<T: Eq + PartialEq + Hash + Copy + Clone + Ord> MouseIndex<T> {
-    pub fn new(step: i32) -> Self {
+    pub fn new(step: i32, size: usize) -> Self {
         return Self {
             step,
-            idx_x: HashMap::new(),
+            idx_x: HashMap::with_capacity(size),
         };
     }
     pub fn clear(&mut self) {

@@ -1,10 +1,10 @@
-use std::{mem, ops::RangeInclusive};
+use std::{collections::HashMap, mem};
 
 use wasm_bindgen::prelude::*;
 
 use crate::{
     CalculatorTrait, GetCenter, Point, PointBox,
-    bsp::IndexSet,
+    bsp::{IndexPart, IndexSet},
     calc::Options,
     constants::{
         DEFAULT_ANIMATION, DEFAULT_ANIMATION_DASHES, DEFAULT_ANIMATION_WIDTH_SCALE,
@@ -24,6 +24,7 @@ pub enum Animation {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
+#[derive(Clone)]
 pub struct Link {
     pub id: u32,
     pub src: u32,
@@ -34,8 +35,10 @@ pub struct Link {
 }
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
+#[derive(Clone)]
 pub struct LinkContainerOpt {
-    pub id: String,
+    pub id: u32,
+    pub label: String,
     pub scale: f64,
     pub animation_scale: f64,
 }
@@ -43,7 +46,8 @@ pub struct LinkContainerOpt {
 impl LinkContainerOpt {
     pub fn defaults() -> Self {
         return Self {
-            id: String::from("default"),
+            id: 0,
+            label: String::from(DEFAULT_OPT_NAME),
             scale: DEFAULT_LINK_SCALE,
             animation_scale: DEFAULT_ANIMATION_WIDTH_SCALE,
         };
@@ -52,8 +56,10 @@ impl LinkContainerOpt {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
+#[derive(Clone)]
 pub struct LinkOpt {
-    pub id: String,
+    pub id: u32,
+    pub label: String,
     pub color: String,
     pub animation_color: String,
     pub animation_dashes: Vec<f64>,
@@ -62,7 +68,8 @@ pub struct LinkOpt {
 impl LinkOpt {
     pub fn defaults() -> Self {
         return Self {
-            id: String::from(DEFAULT_OPT_NAME),
+            id: 0,
+            label: String::from(DEFAULT_OPT_NAME),
             color: String::from(DEFAULT_COLOR),
             animation_color: String::from(DEFAULT_ANIMATION),
             animation_dashes: Vec::from(DEFAULT_ANIMATION_DASHES),
@@ -72,8 +79,10 @@ impl LinkOpt {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
+#[derive(Clone)]
 pub struct BunldeOpt {
-    pub id: String,
+    pub id: u32,
+    pub label: String,
     pub color: String,
     pub img: String,
 }
@@ -81,7 +90,8 @@ pub struct BunldeOpt {
 impl BunldeOpt {
     pub fn defaults() -> Self {
         return Self {
-            id: String::from(DEFAULT_OPT_NAME),
+            id: 0,
+            label: String::from(DEFAULT_OPT_NAME),
             color: String::from(DEFAULT_BUNDLE_COLOR),
             img: String::from(""),
         };
@@ -90,15 +100,16 @@ impl BunldeOpt {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
+#[derive(Clone)]
 pub struct Bundle {
     pub id: u32,
     pub src: u32,
     pub dst: u32,
-    pub opt: String,
+    pub opt: u32,
     pub links: Vec<u32>,
     pub label: String,
 }
-pub trait ContainedBy {
+pub trait SrcDstIs {
     fn get_container_id(&self) -> u64 {
         return create_container_id(self.src(), self.dst());
     }
@@ -106,7 +117,7 @@ pub trait ContainedBy {
     fn dst(&self) -> u32;
 }
 
-impl ContainedBy for Bundle {
+impl SrcDstIs for Bundle {
     fn src(&self) -> u32 {
         return self.src;
     }
@@ -115,7 +126,7 @@ impl ContainedBy for Bundle {
     }
 }
 
-impl ContainedBy for Link {
+impl SrcDstIs for Link {
     fn src(&self) -> u32 {
         return self.src;
     }
@@ -124,13 +135,15 @@ impl ContainedBy for Link {
     }
 }
 
+#[wasm_bindgen(getter_with_clone)]
+#[derive(Clone)]
 pub struct LinkContainer {
     pub links: Vec<Link>,
     pub bundles: Vec<Bundle>,
     pub id: u64,
-    pub opt: String,
-    pub mouse_index: Option<(RangeInclusive<i32>, RangeInclusive<i32>)>,
-    pub screen_index: Option<(RangeInclusive<i32>, RangeInclusive<i32>)>,
+    pub opt: u32,
+    mouse_index: IndexPart,
+    screen_index: IndexPart,
     pub src_point: Option<Point>,
     pub dst_point: Option<Point>,
     pub r: Option<f64>,
@@ -138,6 +151,9 @@ pub struct LinkContainer {
 }
 
 impl CalculatorTrait for LinkContainer {}
+
+#[wasm_bindgen(getter_with_clone)]
+#[derive(Clone)]
 pub struct ComputedLinks {
     pub width: f64,
     pub links: Vec<ComputedLink>,
@@ -146,6 +162,7 @@ pub struct ComputedLinks {
     pub min_y: f64,
     pub max_y: f64,
     pub animations: Vec<AnimatedLink>,
+    pub bundles: Vec<Point>,
 }
 
 impl PointBox for ComputedLinks {
@@ -174,11 +191,15 @@ impl GetCenter for ComputedLinks {
     }
 }
 
+#[wasm_bindgen]
+#[derive(Copy, Clone)]
 pub struct ComputedLink {
     pub src: Point,
     pub dst: Point,
 }
 
+#[wasm_bindgen]
+#[derive(Copy, Clone)]
 pub struct AnimatedLink {
     pub src: Point,
     pub dst: Point,
@@ -203,7 +224,12 @@ impl LinkContainer {
         }
         return b;
     }
-    pub fn update(&mut self, nodes: &NodeStates, ops: &mut Options) {
+    pub fn update(
+        &mut self,
+        nodes: &NodeStates,
+        ops: &mut Options,
+        animations: &mut HashMap<u64, ()>,
+    ) {
         let (src_id, dst_id) = self.get_node_ids();
         let src;
         let dst;
@@ -225,15 +251,29 @@ impl LinkContainer {
             let d = dst.get_center();
             if *a == s && *b == d && cmp_r == r {
                 // we are all ready up to date!
+                animations.remove(&self.id);
                 return;
             }
             self.src_point = Some(s);
             self.dst_point = Some(d);
             // todo
-            //let lc_opt = ops.get_lc(&self.opt);
         }
 
-        if !self.links.is_empty() {}
+        let lc_opt = ops.get_lc(&self.opt);
+        if !self.links.is_empty() {
+            let cu = self.compute_link_segement(
+                &src.get_center(),
+                &dst.get_center(),
+                r,
+                src_id,
+                &lc_opt,
+            );
+            if cu.animations.is_empty() {
+                animations.remove(&self.id);
+            } else {
+                animations.insert(self.id, ());
+            }
+        }
     }
 
     pub fn compute_link_segement(
@@ -242,9 +282,9 @@ impl LinkContainer {
         dst: &Point,
         r: f64,
         src_id: u32,
-        link_scale: f64,
+        link_opt: &LinkContainerOpt,
     ) -> ComputedLinks {
-        let mut links = Vec::new();
+        let mut links = Vec::with_capacity(self.links.len());
         // Apply the shifting offset to create movement
         // ctx.lineDashOffset = offset;
 
@@ -279,8 +319,10 @@ impl LinkContainer {
         ne = self.get_xy(ne.x, ne.y, r, base_angle + 180.0);
         nw = self.get_xy(nw.x, nw.y, r, base_angle);
         let (width, step, init_step) =
-            self.compute_line_width(link_scale, r * 2.0, self.links.len());
-        let mut animations = Vec::new();
+            self.compute_line_width(link_opt.scale, r * 2.0, self.links.len());
+
+        // assume wost case.
+        let mut animations = Vec::with_capacity(self.links.len());
         for (i, link) in self.links.iter().enumerate() {
             let inc_by = init_step + step * (i as f64);
             let start = self.get_xy(ne.x, ne.y, inc_by, angle_south);
@@ -333,6 +375,8 @@ impl LinkContainer {
             links.push(clink);
         }
 
+        // free any unused memory
+        animations.shrink_to_fit();
         return ComputedLinks {
             width,
             links,
@@ -341,6 +385,7 @@ impl LinkContainer {
             min_y,
             max_y,
             animations,
+            bundles: Vec::new(),
         };
     }
     pub fn compute_line_width(&self, link_scale: f64, r: f64, nodes: usize) -> (f64, f64, f64) {
@@ -382,7 +427,7 @@ impl LinkContainer {
             }
         }
         // From here on out it is simply cheaper to compute the distance and plot each point.
-        let mut sets = Vec::new();
+        let mut sets = Vec::with_capacity(bundles);
         let distance = self.get_distance(src.x, src.y, dst.x, dst.y);
         let bc = self.compute_node_scale(bundles);
         let width = distance / ((bc as f64) + 2.0);
@@ -395,12 +440,25 @@ impl LinkContainer {
 
         return sets;
     }
-    pub fn mouse_index(&mut self, idx: i32, new: bool) -> IndexSet {
-        return (None, None);
+    pub fn mouse_index(&mut self, boundry: i32, needs_new: bool) -> IndexSet {
+        let new = self.build_index_bounds(boundry, needs_new);
+        let old = mem::replace(&mut self.mouse_index, new.clone());
+        return (old, new);
+    }
+    pub fn build_index_bounds(&self, boundry: i32, needs_new: bool) -> IndexPart {
+        match needs_new {
+            false => match &self.cl {
+                None => return None,
+                Some(cu) => return Some(cu.index_bound(boundry)),
+            },
+            true => return None,
+        }
     }
 
-    pub fn screen_index(&mut self, idx: i32, new: bool) -> IndexSet {
-        return (None, None);
+    pub fn screen_index(&mut self, boundry: i32, needs_new: bool) -> IndexSet {
+        let new = self.build_index_bounds(boundry, needs_new);
+        let old = mem::replace(&mut self.screen_index, new.clone());
+        return (old, new);
     }
     pub fn is_empty(&self) -> bool {
         return self.links.is_empty() && self.bundles.is_empty();
@@ -416,7 +474,7 @@ impl LinkContainer {
             bundles: Vec::new(),
             mouse_index: None,
             screen_index: None,
-            opt: String::from(DEFAULT_OPT_NAME),
+            opt: 0,
             src_point: None,
             dst_point: None,
             r: None,

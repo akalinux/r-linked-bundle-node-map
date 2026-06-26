@@ -3,16 +3,7 @@ use linked_bundle_node_map::{CalculatorTrait, ContainsPoint, Point, PointBox, no
 
 #[test]
 fn node_box() {
-    let mut node = Node::new(
-        0.5,
-        0.5,
-        1.0,
-        1.0,
-        0,
-        String::from("label"),
-        String::from("opt"),
-        Vec::new(),
-    );
+    let mut node = Node::new(0.5, 0.5, 1.0, 1.0, 0, String::from("label"), 0, Vec::new());
 
     let (mut nw, mut ne, mut sw, mut se) = node.full_box();
     assert_eq!(ne.x, 1.0);

@@ -8,6 +8,41 @@ pub mod constants;
 pub mod link;
 pub mod node;
 
+/// Map Movement transformation struct.
+#[wasm_bindgen(inspectable)]
+pub struct Move {
+    /// The current map transformed point.
+    pub start: Point,
+    /// The current map transformation.
+    pub transform: Transform,
+}
+
+#[wasm_bindgen]
+impl Move {
+    #[wasm_bindgen(constructor)]
+    /// Creates a new [create::Move] instance, the [Point] argument converted to the map cordinates with the [Transform].
+    pub fn new(p: &Point, t: Transform) -> Self {
+        let res = Self {
+            start: p.to_map_xy(p, &t),
+            transform: t,
+        };
+
+        return res;
+    }
+    /// Returns a new [Point] representing the difference to the x and y value since the last call to [Move::stop] or object instantiation.
+    pub fn stop(&mut self, p: &Point) -> Point {
+        let n = p.to_map_xy(p, &self.transform);
+        let diff = Point {
+            x: n.x - self.start.x,
+            y: n.y - self.start.y,
+        };
+        self.start = n;
+
+        return diff;
+    }
+}
+
+impl CalculatorTrait for Move {}
 pub trait ContainsPoint {
     /// Returns true if the element contains the given point.
     fn contains_point(&self, p: &Point) -> bool;
@@ -41,6 +76,7 @@ impl Point {
         };
     }
 }
+impl CalculatorTrait for Point {}
 
 impl GetCenter for Point {
     fn get_center(&self) -> Point {

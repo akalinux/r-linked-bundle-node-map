@@ -10,11 +10,12 @@ use crate::{
 #[derive(Clone, Copy)]
 pub enum LabelPosition {
     Top,
-    Bottom,
     Center,
+    Bottom,
 }
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
+#[derive(Clone)]
 pub struct Node {
     pub x: f64,
     pub y: f64,
@@ -22,28 +23,29 @@ pub struct Node {
     pub w: f64,
     pub id: u32,
     pub label: String,
-    pub opt: String,
+    pub opt: u32,
     pub linked: Vec<u32>,
 }
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
+#[derive(Clone)]
 pub struct NodeOpt {
-    pub id: String,
+    pub id: u32,
+    pub label: String,
     pub img: String,
     pub color: String,
-    pub layer: i8,
-    pub label: LabelPosition,
+    pub label_position: LabelPosition,
 }
 
 impl NodeOpt {
     pub fn defaults() -> Self {
         return Self {
-            id: String::from(DEFAULT_OPT_NAME),
+            id: 0,
+            label: String::from(DEFAULT_OPT_NAME),
             img: String::from(""),
             color: String::from("DEFAULT_COLOR"),
-            layer: 0,
-            label: LabelPosition::Top,
+            label_position: LabelPosition::Top,
         };
     }
 }
@@ -64,7 +66,7 @@ impl Node {
         h: f64,
         id: u32,
         label: String,
-        opt: String,
+        opt: u32,
         linked: Vec<u32>,
     ) -> Self {
         return Self {
@@ -87,7 +89,7 @@ impl Node {
             self.h + h,
             self.id,
             String::from(&self.label),
-            String::from(&self.opt),
+            self.opt,
             self.linked.clone(),
         );
     }
@@ -132,10 +134,10 @@ pub struct NodeStates {
 }
 
 impl NodeStates {
-    pub fn new() -> Self {
+    pub fn new(size: usize) -> Self {
         return Self {
-            updates: HashMap::new(),
-            nodes: HashMap::new(),
+            updates: HashMap::with_capacity(size / 4),
+            nodes: HashMap::with_capacity(size),
         };
     }
 
