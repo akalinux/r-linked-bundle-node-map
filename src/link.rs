@@ -29,7 +29,7 @@ pub struct Link {
     pub id: u32,
     pub src: u32,
     pub dst: u32,
-    pub opt: String,
+    pub opt: u32,
     pub animation: Animation,
     pub label: String,
 }
@@ -242,38 +242,53 @@ impl LinkContainer {
             return;
         }
 
+        let s = src.get_center();
+        let d = dst.get_center();
         let r = self.get_min_r(src, dst);
         if let Some(a) = &self.src_point
             && let Some(b) = &self.dst_point
             && let Some(cmp_r) = self.r
         {
-            let s = src.get_center();
-            let d = dst.get_center();
             if *a == s && *b == d && cmp_r == r {
                 // we are all ready up to date!
-                animations.remove(&self.id);
                 return;
             }
-            self.src_point = Some(s);
-            self.dst_point = Some(d);
-            // todo
         }
+        animations.remove(&self.id);
+        self.src_point = Some(s);
+        self.dst_point = Some(d);
+        self.r = Some(r);
 
         let lc_opt = ops.get_lc(&self.opt);
         if !self.links.is_empty() {
-            let cu = self.compute_link_segement(
-                &src.get_center(),
-                &dst.get_center(),
-                r,
-                src_id,
-                &lc_opt,
-            );
-            if cu.animations.is_empty() {
-                animations.remove(&self.id);
-            } else {
+            let cu = self.compute_link_segement(&s, &d, r, src_id, &lc_opt);
+            if !cu.animations.is_empty() {
                 animations.insert(self.id, ());
             }
+            self.cl = Some(cu);
         }
+    }
+
+    pub fn compute_line_box(&self, ne: &Point, points: [&Point; 3]) -> (f64, f64, f64, f64) {
+        let mut min_x = ne.x;
+        let mut max_x = ne.x;
+        let mut min_y = ne.y;
+        let mut max_y = ne.y;
+        for p in points {
+            if max_x < p.x {
+                max_x = p.x;
+            }
+            if max_y < p.y {
+                max_y = p.y;
+            }
+            if min_x > p.x {
+                min_x = p.x;
+            }
+            if min_y > p.y {
+                min_y = p.y;
+            }
+        }
+        return (min_x, max_x, min_y, max_y);
     }
 
     pub fn compute_link_segement(
@@ -297,24 +312,8 @@ impl LinkContainer {
         let mut nw = self.get_xy(dst.x, dst.y, r, angle_north);
         let se = self.get_xy(src.x, src.y, r, angle_south);
         let sw = self.get_xy(dst.x, dst.y, r, angle_south);
-        let mut min_x = ne.x;
-        let mut max_x = ne.x;
-        let mut min_y = ne.y;
-        let mut max_y = ne.y;
-        for p in [nw, sw, se] {
-            if max_x < p.x {
-                max_x = p.x;
-            }
-            if max_y < p.y {
-                max_y = p.y;
-            }
-            if min_x > p.x {
-                min_x = p.x;
-            }
-            if min_y > p.y {
-                min_y = p.y;
-            }
-        }
+
+        let (min_x, max_x, min_y, max_y) = self.compute_line_box(&ne, [&nw, &sw, &se]);
 
         ne = self.get_xy(ne.x, ne.y, r, base_angle + 180.0);
         nw = self.get_xy(nw.x, nw.y, r, base_angle);
@@ -447,11 +446,13 @@ impl LinkContainer {
     }
     pub fn build_index_bounds(&self, boundry: i64, needs_new: bool) -> IndexPart {
         match needs_new {
-            false => match &self.cl {
+            true => match &self.cl {
                 None => return None,
-                Some(cu) => return Some(cu.index_bound(boundry)),
+                Some(cu) => {
+                    return Some(cu.index_bound(boundry));
+                }
             },
-            true => return None,
+            false => return None,
         }
     }
 
@@ -489,6 +490,9 @@ impl LinkContainer {
     }
 
     pub fn add_link(&mut self, link: Link) -> Option<Link> {
+        if link.src == link.dst {
+            panic!("Link.src and Link.dst cannot be the same!");
+        }
         self.clear_points();
         for (id, l) in self.links.iter().enumerate() {
             if l.id == link.id {
@@ -500,6 +504,9 @@ impl LinkContainer {
     }
 
     pub fn add_bundle(&mut self, bundle: Bundle) -> Option<Bundle> {
+        if bundle.src == bundle.dst {
+            panic!("Bundle.src and Bundle.dst cannot be the same!");
+        }
         self.clear_points();
         for (id, b) in self.bundles.iter().enumerate() {
             if b.id == b.id {

@@ -62,7 +62,7 @@ impl ScreenIndex {
                 let cmp = ScreenBox::new(t, width as u64, height as u64, self.step);
                 match sb.contains(&cmp) {
                     Some(view) => {
-                        // fi we got here.. then we have a valid view point
+                        // if we got here.. then we have a valid view point
                         let size = ((view.scale() / sb.scale()) * node_count as f64) as usize;
                         let mut nodes = Vec::with_capacity(size);
                         let mut links = Vec::with_capacity(size);
@@ -117,17 +117,27 @@ macro_rules! screen_idx {
                     if !self.x.contains_key(&x) {
                         continue;
                     }
-                    let idx_x = self.x.get_mut(&x).unwrap();
-                    for y in old.1.clone().step_by(step) {
-                        if !idx_x.contains_key(&y) {
-                            continue;
-                        }
-                        let idx_y = idx_x.get_mut(&y).unwrap();
-                        idx_y.$field.remove(&id);
 
-                        if idx_y.nodes.is_empty() && idx_y.links.is_empty() {
-                            idx_x.remove(&y);
+                    let mut clear = false;
+                    {
+                        let idx_x = self.x.get_mut(&x).unwrap();
+                        for y in old.1.clone().step_by(step) {
+                            if !idx_x.contains_key(&y) {
+                                continue;
+                            }
+                            let idx_y = idx_x.get_mut(&y).unwrap();
+                            idx_y.$field.remove(&id);
+
+                            if idx_y.nodes.is_empty() && idx_y.links.is_empty() {
+                                idx_x.remove(&y);
+                            }
+                            if idx_x.is_empty() {
+                                clear = true;
+                            }
                         }
+                    }
+                    if clear {
+                        self.x.remove(&x);
                     }
                 }
             }

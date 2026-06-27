@@ -33,7 +33,7 @@ fn compute_link_tests() {
         id: 0,
         src: 0,
         dst: 1,
-        opt: String::from("defaults"),
+        opt: 0,
         animation: Animation::None,
         label: String::from("test link 1"),
     });
@@ -58,7 +58,7 @@ fn compute_link_tests() {
         id: 1,
         src: 0,
         dst: 1,
-        opt: String::from("defaults"),
+        opt: 0,
         animation: Animation::None,
         label: String::from("test link 1"),
     });
@@ -87,7 +87,7 @@ fn compute_link_tests() {
         id: 2,
         src: 0,
         dst: 1,
-        opt: String::from("defaults"),
+        opt: 0,
         animation: Animation::None,
         label: String::from("test link 1"),
     });
@@ -168,7 +168,7 @@ fn animation_tests() {
         id: 0,
         src: 0,
         dst: 1,
-        opt: String::from("defaults"),
+        opt: 0,
         animation: Animation::ToSrc,
         label: String::from("test link 1"),
     });
@@ -187,7 +187,7 @@ fn animation_tests() {
         id: 0,
         src: 1,
         dst: 0,
-        opt: String::from("defaults"),
+        opt: 0,
         animation: Animation::ToSrc,
         label: String::from("test link 1"),
     });
@@ -202,7 +202,7 @@ fn animation_tests() {
         id: 0,
         src: 0,
         dst: 1,
-        opt: String::from("defaults"),
+        opt: 0,
         animation: Animation::Both,
         label: String::from("test link 1"),
     });
