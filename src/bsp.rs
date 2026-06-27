@@ -1,12 +1,13 @@
-use crate::{PointBox, link::LinkContainer, node::Node};
+use crate::{CalculatorTrait, PointBox, ScreenBox, Transform, link::LinkContainer, node::Node};
 use std::{collections::BTreeMap, collections::HashMap, hash::Hash, ops::RangeInclusive};
 
-pub type IndexPart = Option<(RangeInclusive<i32>, RangeInclusive<i32>)>;
+pub type IndexXY = (RangeInclusive<i64>, RangeInclusive<i64>);
+pub type IndexPart = Option<IndexXY>;
 pub type IndexSet = (IndexPart, IndexPart);
 
 pub struct MouseIndex<T: Eq + PartialEq + Hash> {
-    pub step: i32,
-    pub idx_x: HashMap<i32, HashMap<i32, BTreeMap<T, ()>>>,
+    pub step: i64,
+    pub idx_x: HashMap<i64, HashMap<i64, BTreeMap<T, ()>>>,
 }
 
 pub struct ScreenBoundY {
@@ -15,18 +16,94 @@ pub struct ScreenBoundY {
 }
 
 pub struct ScreenIndex {
-    pub x: HashMap<i32, HashMap<i32, ScreenBoundY>>,
-    pub step: i32,
+    pub x: BTreeMap<i64, BTreeMap<i64, ScreenBoundY>>,
+    pub step: i64,
 }
 
 impl ScreenIndex {
-    pub fn new(step: i32, size: usize) -> Self {
+    pub fn new(step: i64) -> Self {
         return Self {
-            x: HashMap::with_capacity(size),
+            x: BTreeMap::new(),
             step,
         };
     }
+
+    pub fn max_screen(&self) -> Option<ScreenBox> {
+        let idx_x = &self.x;
+        if idx_x.is_empty() {
+            return None;
+        }
+        let (start_x, y_t) = idx_x.first_key_value().unwrap();
+        let (start_y, _) = y_t.first_key_value().unwrap();
+        let (end_x, y_t) = idx_x.last_key_value().unwrap();
+        let (end_y, _) = y_t.last_key_value().unwrap();
+        let end_x = *end_x + self.step;
+        let end_y = *end_y + self.step;
+        let width = (end_x - start_x) as u64;
+        let height = (end_y - start_y) as u64;
+        return Some(ScreenBox {
+            x: *start_x,
+            y: *start_y,
+            width,
+            height,
+            step: self.step,
+        });
+    }
+
+    pub fn on_screen(
+        &self,
+        width: u32,
+        height: u32,
+        t: &Transform,
+        node_count: u32,
+    ) -> (Vec<u32>, Vec<u64>) {
+        match self.max_screen() {
+            Some(sb) => {
+                let cmp = ScreenBox::new(t, width as u64, height as u64, self.step);
+                match sb.contains(&cmp) {
+                    Some(view) => {
+                        // fi we got here.. then we have a valid view point
+                        let size = ((view.scale() / sb.scale()) * node_count as f64) as usize;
+                        let mut nodes = Vec::with_capacity(size);
+                        let mut links = Vec::with_capacity(size);
+                        let mut known_nodes = HashMap::with_capacity(size);
+                        let mut known_links = HashMap::with_capacity(size);
+                        let (x, y) = view.getxy_bounds();
+                        let idx = &self.x;
+                        for x in x.step_by(self.step as usize) {
+                            for y in y.clone().step_by(self.step as usize) {
+                                let sets = idx.get(&x).unwrap().get(&y).unwrap();
+                                for (node_id, _) in &sets.nodes {
+                                    if known_nodes.contains_key(node_id) {
+                                        continue;
+                                    }
+                                    nodes.push(*node_id);
+                                    known_nodes.insert(*node_id, ());
+                                }
+                                for (link_id, _) in &sets.links {
+                                    if known_links.contains_key(link_id) {
+                                        continue;
+                                    }
+                                    links.push(*link_id);
+                                    known_links.insert(*link_id, ());
+                                }
+                            }
+                        }
+                        // free any lost memory here!
+                        nodes.shrink_to_fit();
+                        links.shrink_to_fit();
+                        return (nodes, links);
+                    }
+                    None => (),
+                }
+                return (Vec::new(), Vec::new());
+            }
+            None => return (Vec::new(), Vec::new()),
+        }
+    }
 }
+
+impl CalculatorTrait for ScreenIndex {}
 macro_rules! screen_idx {
     ($method:ident,$clear:ident,$update:ident,$field:ident,$id:ty) => {
         impl ScreenIndex {
@@ -66,7 +143,7 @@ macro_rules! screen_idx {
                         idx_x = t;
                     } else {
                         // None of this exists.. need to make it
-                        self.x.insert(x, HashMap::new());
+                        self.x.insert(x, BTreeMap::new());
                         idx_x = self.x.get_mut(&x).unwrap();
                     }
                     for y in new.1.clone().step_by(step) {
@@ -144,11 +221,11 @@ impl<T: Eq + PartialEq + Hash + Copy + Clone> IsIndexed<T> {
 }
 
 impl Indexers {
-    pub fn new(node_mouse_b: i32, link_mouse_b: i32, screen_mouse_b: i32, size: usize) -> Self {
+    pub fn new(node_mouse_b: i64, link_mouse_b: i64, screen_mouse_b: i64, size: usize) -> Self {
         return Self {
             link_mouse_idx: MouseIndex::new(link_mouse_b, size * 8),
             node_mouse_idx: MouseIndex::new(node_mouse_b, size * 32),
-            screen_index: ScreenIndex::new(screen_mouse_b, size),
+            screen_index: ScreenIndex::new(screen_mouse_b),
             node_check: IsIndexed::new(size * 64),
             link_check: IsIndexed::new(size * 64),
         };
@@ -242,7 +319,7 @@ impl Indexers {
 }
 
 impl<T: Eq + PartialEq + Hash + Copy + Clone + Ord> MouseIndex<T> {
-    pub fn new(step: i32, size: usize) -> Self {
+    pub fn new(step: i64, size: usize) -> Self {
         return Self {
             step,
             idx_x: HashMap::with_capacity(size),

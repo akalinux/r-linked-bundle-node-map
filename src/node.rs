@@ -140,6 +140,9 @@ impl NodeStates {
             nodes: HashMap::with_capacity(size),
         };
     }
+    pub fn node_count(&self) -> usize {
+        return self.nodes.len();
+    }
 
     pub fn insert(&mut self, node: Node) -> Option<Node> {
         self.updates.remove(&node.id);

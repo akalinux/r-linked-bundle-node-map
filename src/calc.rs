@@ -20,7 +20,7 @@ impl BacklogUpdates {
     pub fn new(size: usize) -> Self {
         return Self {
             nodes: HashMap::with_capacity(size),
-            links: HashMap::with_capacity(size * 4),
+            links: HashMap::with_capacity(size),
         };
     }
 
@@ -122,7 +122,7 @@ macro_rules! cul_lc {
 #[wasm_bindgen]
 impl Calculator {
     #[wasm_bindgen(constructor)]
-    pub fn new(node_mouse_b: i32, link_mouse_b: i32, screen_mouse_b: i32, size: usize) -> Self {
+    pub fn new(node_mouse_b: i64, link_mouse_b: i64, screen_mouse_b: i64, size: usize) -> Self {
         return Self {
             links: HashMap::with_capacity(size * 4),
             animations: HashMap::with_capacity(size * 4),
@@ -139,7 +139,7 @@ impl Calculator {
         };
     }
     pub fn from_defaults() -> Self {
-        let mouse_b = (DEFAULT_NODE_R as i32) * 4;
+        let mouse_b = (DEFAULT_NODE_R as i64) * 4;
         let link_b = mouse_b * 4;
         let screen_b = link_b * 4;
         return Self::new(mouse_b, link_b, screen_b, 256);

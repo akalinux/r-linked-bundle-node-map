@@ -440,12 +440,12 @@ impl LinkContainer {
 
         return sets;
     }
-    pub fn mouse_index(&mut self, boundry: i32, needs_new: bool) -> IndexSet {
+    pub fn mouse_index(&mut self, boundry: i64, needs_new: bool) -> IndexSet {
         let new = self.build_index_bounds(boundry, needs_new);
         let old = mem::replace(&mut self.mouse_index, new.clone());
         return (old, new);
     }
-    pub fn build_index_bounds(&self, boundry: i32, needs_new: bool) -> IndexPart {
+    pub fn build_index_bounds(&self, boundry: i64, needs_new: bool) -> IndexPart {
         match needs_new {
             false => match &self.cl {
                 None => return None,
@@ -455,7 +455,7 @@ impl LinkContainer {
         }
     }
 
-    pub fn screen_index(&mut self, boundry: i32, needs_new: bool) -> IndexSet {
+    pub fn screen_index(&mut self, boundry: i64, needs_new: bool) -> IndexSet {
         let new = self.build_index_bounds(boundry, needs_new);
         let old = mem::replace(&mut self.screen_index, new.clone());
         return (old, new);

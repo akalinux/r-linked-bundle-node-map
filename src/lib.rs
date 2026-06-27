@@ -1,12 +1,131 @@
-use std::ops::RangeInclusive;
 use wasm_bindgen::prelude::*;
 
-use crate::constants::{RAD2DEG, TRIANGLE_MARGINE_FOR_ERROR};
+use crate::{
+    bsp::IndexXY,
+    constants::{RAD2DEG, TRIANGLE_MARGINE_FOR_ERROR, ZERO_POINT},
+};
 pub mod bsp;
 pub mod calc;
 pub mod constants;
 pub mod link;
 pub mod node;
+
+#[derive(PartialEq, PartialOrd, Eq, Ord, Clone, Copy, Debug)]
+pub struct ScreenBox {
+    pub width: u64,
+    pub height: u64,
+    pub x: i64,
+    pub y: i64,
+    pub step: i64,
+}
+
+impl ScreenBox {
+    pub fn new(t: &Transform, mut width: u64, mut height: u64, step: i64) -> Self {
+        width = (width as f64 / t.k) as u64;
+        height = (height as f64 / t.k) as u64;
+        let mut m = width % step as u64;
+        if m == 0 {
+            width -= step as u64;
+        } else {
+            width -= m;
+        }
+        m = height % step as u64;
+        if m == 0 {
+            height -= step as u64;
+        } else {
+            height -= m;
+        }
+        let p = ZERO_POINT.to_map_xy(&ZERO_POINT, t);
+        let x = p.x as i64;
+        let y = p.y as i64;
+        return Self {
+            width: width + step as u64,
+            height: height + step as u64,
+            x,
+            y,
+            step,
+        };
+    }
+
+    pub fn getxy_bounds(&self) -> IndexXY {
+        return (self.x..=self.bound_x(), self.y..=self.bound_y());
+    }
+
+    pub fn scale(&self) -> f64 {
+        return (self.width as f64 / self.step as f64 + self.height as f64 / self.step as f64)
+            as f64
+            / 2.0;
+    }
+
+    pub fn contains_x(&self, x: i64) -> bool {
+        return !(self.x > x || self.bound_x() < x);
+    }
+
+    pub fn contains_y(&self, y: i64) -> bool {
+        return !(self.y > y || self.bound_y() < y);
+    }
+
+    pub fn max_x(&self) -> i64 {
+        return self.x + self.width as i64;
+    }
+
+    pub fn max_y(&self) -> i64 {
+        return self.y + self.height as i64;
+    }
+
+    pub fn bound_x(&self) -> i64 {
+        return self.x + self.width as i64 - self.step;
+    }
+
+    pub fn bound_y(&self) -> i64 {
+        return self.y + self.height as i64 - self.step;
+    }
+
+    pub fn contains(&self, b: &ScreenBox) -> Option<ScreenBox> {
+        if (self.contains_x(b.x) || self.contains_x(b.bound_y()))
+            && (self.contains_y(b.y) || self.contains_y(b.bound_y()))
+        {
+            let width;
+            let x;
+            let y;
+            let height;
+            if b.x < self.x {
+                x = self.x;
+            } else {
+                x = b.x;
+            }
+            let mut end = b.max_x();
+            let mut max = self.max_x();
+            if end > max {
+                width = (max - x) as u64;
+            } else {
+                width = (end - x) as u64;
+            }
+
+            if b.y < self.x {
+                y = self.y;
+            } else {
+                y = b.y;
+            }
+            end = b.max_y();
+            max = self.max_y();
+            if end > max {
+                height = (max - y) as u64;
+            } else {
+                height = (end - y) as u64;
+            }
+
+            return Some(ScreenBox {
+                width,
+                height,
+                x,
+                y,
+                step: self.step,
+            });
+        }
+        return None;
+    }
+}
 
 /// Map Movement transformation struct.
 #[wasm_bindgen(inspectable)]
@@ -139,11 +258,11 @@ pub trait PointBox {
         return res;
     }
 
-    fn index_bound(&self, boundry: i32) -> (RangeInclusive<i32>, RangeInclusive<i32>) {
-        let min_x = self.get_min_x() as i32;
-        let max_x = self.get_max_x() as i32;
-        let min_y = self.get_min_y() as i32;
-        let max_y = self.get_max_y() as i32;
+    fn index_bound(&self, boundry: i64) -> IndexXY {
+        let min_x = self.get_min_x() as i64;
+        let max_x = self.get_max_x() as i64;
+        let min_y = self.get_min_y() as i64;
+        let max_y = self.get_max_y() as i64;
         let sx = min_x - (min_x % boundry);
         let ex = max_x + (max_x % boundry);
         let sy = min_y - (min_y % boundry);
@@ -151,12 +270,12 @@ pub trait PointBox {
         return (sx..=ex, sy..=ey);
     }
 
-    fn getx_index_bound(&self, boundry: i32) -> i32 {
-        let min_x = self.get_min_x() as i32;
+    fn getx_index_bound(&self, boundry: i64) -> i64 {
+        let min_x = self.get_min_x() as i64;
         return min_x - (min_x % boundry);
     }
-    fn gety_index_bound(&self, boundry: i32) -> i32 {
-        let min_y = self.get_min_y() as i32;
+    fn gety_index_bound(&self, boundry: i64) -> i64 {
+        let min_y = self.get_min_y() as i64;
         return min_y - (min_y % boundry);
     }
 }

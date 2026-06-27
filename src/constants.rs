@@ -1,5 +1,7 @@
 use std::f64::consts::PI;
 
+use crate::Point;
+
 /// Used to slightly oversize link boxes for mouse over intersections preventing misses.
 pub const TRIANGLE_MARGINE_FOR_ERROR: f64 = 1.00004;
 
@@ -28,3 +30,5 @@ pub const DEFAULT_HIGHLIGHT: &'static str = "#d4d4d468";
 
 pub const DEFAULT_ANIMATION_DASHES: [f64; 2] = [5.0, 15.0];
 pub const DEFAULT_ANIMATION_WIDTH_SCALE: f64 = 0.3;
+
+pub const ZERO_POINT: Point = Point { x: 0.0, y: 0.0 };
