@@ -129,16 +129,31 @@ impl PointBox for Node {
 }
 
 pub struct NodeStates {
-    updates: HashMap<u32, Node>,
-    nodes: HashMap<u32, Node>,
+    pub updates: HashMap<u32, Node>,
+    pub nodes: HashMap<u32, Node>,
 }
 
 impl NodeStates {
     pub fn new(size: usize) -> Self {
         return Self {
-            updates: HashMap::with_capacity(size / 4),
+            updates: HashMap::new(),
             nodes: HashMap::with_capacity(size),
         };
+    }
+    pub fn reserve(&mut self, size: usize) {
+        self.nodes.reserve(size);
+    }
+    pub fn shrink_to_fit(&mut self) {
+        self.nodes.shrink_to_fit();
+    }
+
+    pub fn get_node_changes(&self) -> Vec<Node> {
+        let mut nodes = Vec::with_capacity(self.updates.len());
+
+        for src in self.updates.values() {
+            nodes.push(src.clone());
+        }
+        return nodes;
     }
     pub fn node_count(&self) -> usize {
         return self.nodes.len();

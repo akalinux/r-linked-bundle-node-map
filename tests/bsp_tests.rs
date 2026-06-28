@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use linked_bundle_node_map::{
     PointBox, ScreenBox, Transform,
-    bsp::ScreenIndex,
+    bsp::{IsIndexed, ScreenIndex},
     calc::Options,
     link::{Animation, Link, LinkContainer},
     node::{Node, NodeStates},
@@ -83,4 +83,30 @@ fn screen_index_tests() {
     idx.index_link(link.id, link.screen_index(idx.step, false));
     res = create_res(&mut idx);
     assert_eq!((res.0.len(), res.1.len()), (0, 0));
+}
+
+#[test]
+fn is_indexed_tests() {
+    let mut idx = IsIndexed::<u32>::new(2);
+    assert!(idx.is_empty());
+    assert!(!idx.is_mouse(0));
+    assert!(!idx.is_screen(0));
+
+    idx.add_mouse(0);
+    assert!(!idx.is_empty());
+    assert!(idx.is_mouse(0));
+    assert!(!idx.is_screen(0));
+
+    idx.add_screen(0);
+    assert!(!idx.is_empty());
+    assert!(idx.is_screen(0));
+    assert!(idx.is_mouse(0));
+    idx.clear_screen(0);
+    assert!(!idx.is_empty());
+    assert!(idx.is_mouse(0));
+    assert!(!idx.is_screen(0));
+    idx.clear_mouse(0);
+    assert!(!idx.is_mouse(0));
+    assert!(!idx.is_screen(0));
+    assert!(idx.is_empty());
 }

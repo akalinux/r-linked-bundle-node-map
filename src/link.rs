@@ -109,6 +109,7 @@ pub struct Bundle {
     pub links: Vec<u32>,
     pub label: String,
 }
+
 pub trait SrcDstIs {
     fn get_container_id(&self) -> u64 {
         return create_container_id(self.src(), self.dst());
@@ -144,15 +145,19 @@ pub struct LinkContainer {
     pub opt: u32,
     mouse_index: IndexPart,
     screen_index: IndexPart,
-    pub src_point: Option<Point>,
-    pub dst_point: Option<Point>,
-    pub r: Option<f64>,
-    pub cl: Option<ComputedLinks>,
+    link_src: Option<LinkSource>,
+}
+
+#[derive(Clone)]
+pub struct LinkSource {
+    pub src_point: Point,
+    pub dst_point: Point,
+    pub r: f64,
+    pub cl: ComputedLinks,
 }
 
 impl CalculatorTrait for LinkContainer {}
 
-#[wasm_bindgen(getter_with_clone)]
 #[derive(Clone)]
 pub struct ComputedLinks {
     pub width: f64,
@@ -245,27 +250,29 @@ impl LinkContainer {
         let s = src.get_center();
         let d = dst.get_center();
         let r = self.get_min_r(src, dst);
-        if let Some(a) = &self.src_point
-            && let Some(b) = &self.dst_point
-            && let Some(cmp_r) = self.r
-        {
-            if *a == s && *b == d && cmp_r == r {
+        if let Some(state) = &self.link_src {
+            if state.src_point == s && state.dst_point == d && state.r == r {
                 // we are all ready up to date!
                 return;
             }
         }
         animations.remove(&self.id);
-        self.src_point = Some(s);
-        self.dst_point = Some(d);
-        self.r = Some(r);
 
         let lc_opt = ops.get_lc(&self.opt);
-        if !self.links.is_empty() {
-            let cu = self.compute_link_segement(&s, &d, r, src_id, &lc_opt);
+        if !self.is_empty() {
+            // this code is temporary.. will need to upgrade it in order to support arches and elbows.
+            let mut cu = self.compute_link_segement(&s, &d, r, src_id, &lc_opt);
             if !cu.animations.is_empty() {
                 animations.insert(self.id, ());
             }
-            self.cl = Some(cu);
+            self.compute_bunlde_points(&s, &d, self.bundles.len(), &mut cu.bundles);
+            let src = LinkSource {
+                src_point: s,
+                dst_point: d,
+                r: r,
+                cl: cu,
+            };
+            self.link_src = Some(src);
         }
     }
 
@@ -317,6 +324,20 @@ impl LinkContainer {
 
         ne = self.get_xy(ne.x, ne.y, r, base_angle + 180.0);
         nw = self.get_xy(nw.x, nw.y, r, base_angle);
+
+        if self.links.is_empty() {
+            return ComputedLinks {
+                width: r * 2.0,
+                links,
+                min_x,
+                max_x,
+                min_y,
+                max_y,
+                animations: Vec::new(),
+                bundles: Vec::new(),
+            };
+        }
+
         let (width, step, init_step) =
             self.compute_line_width(link_opt.scale, r * 2.0, self.links.len());
 
@@ -397,36 +418,52 @@ impl LinkContainer {
 
     pub fn compute_node_scale(&self, nodes: usize) -> usize {
         let offset;
-        if nodes == 1 {
-            offset = 0;
-        } else {
-            offset = 1
+        match nodes {
+            0 => return 0,
+            1 => offset = 0,
+            _ => offset = 1,
         }
         return 2 * nodes - offset;
     }
 
-    pub fn compute_bunlde_points(&self, src: &Point, dst: &Point, bundles: usize) -> Vec<Point> {
+    pub fn compute_bunlde_points(
+        &self,
+        src: &Point,
+        dst: &Point,
+        bundles: usize,
+        points: &mut Vec<Point>,
+    ) {
         let center = src.compute_center(dst);
+        points.reserve(bundles);
         if bundles < 4 {
             // quick and dirty optimization for up to 3 bundles..
             match bundles {
                 // just dead center
-                1 => return Vec::from([center]),
+                1 => {
+                    points.extend_from_slice(&[center]);
+                    return;
+                }
                 // left of start, right of end
-                2 => return Vec::from([src.compute_center(&center), dst.compute_center(&center)]),
+                2 => {
+                    points.extend_from_slice(&[
+                        src.compute_center(&center),
+                        dst.compute_center(&center),
+                    ]);
+                    return;
+                }
                 // left of start, cetner, right of end.
                 3 => {
-                    return Vec::from([
+                    points.extend_from_slice(&[
                         src.compute_center(&center),
                         center,
                         dst.compute_center(&center),
                     ]);
+                    return;
                 }
                 _ => (),
             }
         }
         // From here on out it is simply cheaper to compute the distance and plot each point.
-        let mut sets = Vec::with_capacity(bundles);
         let distance = self.get_distance(src.x, src.y, dst.x, dst.y);
         let bc = self.compute_node_scale(bundles);
         let width = distance / ((bc as f64) + 2.0);
@@ -434,10 +471,8 @@ impl LinkContainer {
         let angle = self.get_angle(src.x, src.y, dst.x, dst.y) + 180.0;
         for i in 0..bundles {
             let r = width + ((i as f64) * 2.0 * width);
-            sets.push(self.get_xy(src.x, src.y, r, angle));
+            points.push(self.get_xy(src.x, src.y, r, angle));
         }
-
-        return sets;
     }
     pub fn mouse_index(&mut self, boundry: i64, needs_new: bool) -> IndexSet {
         let new = self.build_index_bounds(boundry, needs_new);
@@ -446,10 +481,10 @@ impl LinkContainer {
     }
     pub fn build_index_bounds(&self, boundry: i64, needs_new: bool) -> IndexPart {
         match needs_new {
-            true => match &self.cl {
+            true => match &self.link_src {
                 None => return None,
                 Some(cu) => {
-                    return Some(cu.index_bound(boundry));
+                    return Some(cu.cl.index_bound(boundry));
                 }
             },
             false => return None,
@@ -476,17 +511,12 @@ impl LinkContainer {
             mouse_index: None,
             screen_index: None,
             opt: 0,
-            src_point: None,
-            dst_point: None,
-            r: None,
-            cl: None,
+            link_src: None,
         };
     }
 
     pub fn clear_points(&mut self) {
-        self.src_point = None;
-        self.dst_point = None;
-        self.r = None;
+        self.link_src = None;
     }
 
     pub fn add_link(&mut self, link: Link) -> Option<Link> {

@@ -88,6 +88,8 @@ build_opts!(LinkContainerOpt, lc, get_lc, set_lc, rm_lc);
 #[wasm_bindgen]
 pub struct Calculator {
     node_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Node instances to LinkContainer instances
+    bundle_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Bundle instances to LinkContainer instances
+    link_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Link instances to LinkContainer instances
     nodes: NodeStates,
 
     backlog: BacklogUpdates,
@@ -100,6 +102,37 @@ pub struct Calculator {
 
 impl CalculatorTrait for Calculator {}
 
+macro_rules! manage_linked {
+    ($self:ident,$field:ident,$add:expr,$el:expr) => {
+        let lid = $el.get_container_id();
+        if $add {
+            match $self.$field.get_mut(&$el.id) {
+                Some(f) => {
+                    f.insert(lid, ());
+                }
+                None => {
+                    let mut hm = HashMap::new();
+                    hm.insert(lid, ());
+                    $self.$field.insert($el.id, hm);
+                }
+            }
+        } else {
+            let mut rm = false;
+            match $self.$field.get_mut(&$el.id) {
+                Some(f) => {
+                    f.remove(&lid);
+                    if f.is_empty() {
+                        rm = true;
+                    }
+                }
+                None => (),
+            }
+            if rm {
+                $self.$field.remove(&$el.id);
+            }
+        }
+    };
+}
 macro_rules! cul_lc {
     ($self:ident,$lid:ident) => {{
         if $self.links.get(&$lid).unwrap().is_empty() {
@@ -124,20 +157,26 @@ impl Calculator {
     #[wasm_bindgen(constructor)]
     pub fn new(node_mouse_b: i64, link_mouse_b: i64, screen_mouse_b: i64, size: usize) -> Self {
         return Self {
-            links: HashMap::with_capacity(size * 4),
-            animations: HashMap::with_capacity(size * 4),
-            node_links: HashMap::with_capacity(size),
+            links: HashMap::with_capacity(size),
+            animations: HashMap::with_capacity(size),
             nodes: NodeStates::new(size),
             backlog: BacklogUpdates::new(size),
-            indexer: Indexers::new(node_mouse_b, link_mouse_b, screen_mouse_b, size / 32),
+            indexer: Indexers::new(node_mouse_b, link_mouse_b, screen_mouse_b, size),
             options: Options::new(),
             transform: Transform {
                 x: 0.0,
                 y: 0.0,
                 k: 1.0,
             },
+            node_links: HashMap::with_capacity(size),
+            bundle_links: HashMap::with_capacity(size),
+            link_links: HashMap::with_capacity(size),
         };
     }
+    pub fn get_node_changes(&self) -> Vec<Node> {
+        return self.nodes.get_node_changes();
+    }
+
     pub fn from_defaults() -> Self {
         let mouse_b = (DEFAULT_NODE_R as i64) * 4;
         let link_b = mouse_b * 4;
@@ -151,7 +190,7 @@ impl Calculator {
         self.transform = *t;
     }
 
-    pub fn add_node(&mut self, node: Node) -> Option<Node> {
+    pub fn node_add(&mut self, node: Node) -> Option<Node> {
         if let Some(node) = self.nodes.get(node.id) {
             self.indexer.clear_node(node);
         }
@@ -176,7 +215,7 @@ impl Calculator {
         }
     }
 
-    pub fn remove_node(&mut self, id: u32) -> Option<Node> {
+    pub fn node_remove(&mut self, id: u32) -> Option<Node> {
         let res = self.nodes.remove(id);
         if let Some(node) = &res {
             let mut known = HashMap::new();
@@ -196,31 +235,38 @@ impl Calculator {
         return self.links.get_mut(&link_id).unwrap();
     }
 
-    pub fn remove_link(&mut self, src: u32, dst: u32, id: u32) -> Option<Link> {
+    pub fn link_remove(&mut self, src: u32, dst: u32, id: u32) -> Option<Link> {
         let res;
         let lid = create_container_id(src, dst);
 
         {
             let lc = self.manage_lc(lid);
             res = lc.remove_link(id);
+            if let Some(link) = &res {
+                manage_linked!(self, bundle_links, false, link);
+            }
         }
         cul_lc!(self, lid);
         return res;
     }
 
-    pub fn remove_bundle(&mut self, src: u32, dst: u32, id: u32) -> Option<Bundle> {
+    pub fn bundle_remove(&mut self, src: u32, dst: u32, id: u32) -> Option<Bundle> {
         let lid = create_container_id(src, dst);
         let res;
         {
             let lc = self.manage_lc(lid);
             res = lc.remove_bundle(id);
+            if let Some(bundle) = &res {
+                manage_linked!(self, bundle_links, false, bundle);
+            }
         }
         cul_lc!(self, lid);
         return res;
     }
 
-    pub fn add_link(&mut self, link: Link) -> Option<Link> {
+    pub fn link_add(&mut self, link: Link) -> Option<Link> {
         let lid = link.get_container_id();
+        manage_linked!(self, link_links, true, link);
         let res;
         {
             let lc = self.manage_lc(lid);
@@ -230,9 +276,10 @@ impl Calculator {
         return res;
     }
 
-    pub fn add_bundle(&mut self, bundle: Bundle) -> Option<Bundle> {
+    pub fn bundle_add(&mut self, bundle: Bundle) -> Option<Bundle> {
         let lid = bundle.get_container_id();
         let res;
+        manage_linked!(self, bundle_links, true, bundle);
         {
             let lc = self.manage_lc(lid);
             res = lc.add_bundle(bundle);

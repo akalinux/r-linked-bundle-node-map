@@ -1,5 +1,9 @@
 use crate::{CalculatorTrait, PointBox, ScreenBox, Transform, link::LinkContainer, node::Node};
-use std::{collections::BTreeMap, collections::HashMap, hash::Hash, ops::RangeInclusive};
+use std::{
+    collections::{BTreeMap, HashMap},
+    hash::Hash,
+    ops::RangeInclusive,
+};
 
 pub type IndexXY = (RangeInclusive<i64>, RangeInclusive<i64>);
 pub type IndexPart = Option<IndexXY>;
@@ -191,54 +195,153 @@ pub struct Indexers {
     pub link_check: IsIndexed<u64>,
 }
 
-pub struct IsIndexed<T: Eq + PartialEq + Hash + Copy + Clone> {
-    screen: HashMap<T, ()>,
-    mouse: HashMap<T, ()>,
+enum IndexLoadState {
+    Screen,
+    Mouse,
+    Both,
+    None,
 }
-impl<T: Eq + PartialEq + Hash + Copy + Clone> IsIndexed<T> {
+
+pub struct IsIndexed<T: Eq + PartialEq + Hash + Copy + Clone + Ord> {
+    idx: HashMap<T, IndexLoadState>,
+}
+impl<T: Eq + PartialEq + Hash + Copy + Clone + Ord> IsIndexed<T> {
     pub fn new(size: usize) -> Self {
         return Self {
-            screen: HashMap::with_capacity(size),
-            mouse: HashMap::with_capacity(size),
+            idx: HashMap::with_capacity(size),
         };
     }
+    pub fn reserve(&mut self, size: usize) {
+        self.idx.reserve(size);
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.idx.shrink_to_fit();
+    }
+
     pub fn clear(&mut self, t: T) {
-        self.screen.remove(&t);
-        self.mouse.remove(&t);
+        self.idx.remove(&t);
+    }
+
+    fn manage(&mut self, t: T, add: bool, screen: bool) {
+        let dst;
+        let current = self.idx.get(&t);
+        match current {
+            None => match add {
+                true => match screen {
+                    true => dst = IndexLoadState::Screen, // add this as screen object
+                    false => dst = IndexLoadState::Mouse, // add this as mouse object
+                },
+                false => return, // Nothing to add
+            },
+            Some(v) => match add {
+                true => match screen {
+                    true => match v {
+                        IndexLoadState::Mouse => dst = IndexLoadState::Both,
+                        _ => return,
+                    },
+                    false => match v {
+                        IndexLoadState::Screen => dst = IndexLoadState::Both,
+                        _ => return,
+                    },
+                },
+                false => match screen {
+                    true => match v {
+                        IndexLoadState::Both => dst = IndexLoadState::Mouse,
+                        IndexLoadState::Screen => dst = IndexLoadState::None,
+                        _ => return,
+                    },
+                    false => match v {
+                        IndexLoadState::Both => dst = IndexLoadState::Screen,
+                        IndexLoadState::Mouse => dst = IndexLoadState::None,
+                        _ => return,
+                    },
+                },
+            },
+        }
+
+        match dst {
+            IndexLoadState::None => self.idx.remove(&t),
+            _ => self.idx.insert(t, dst),
+        };
+    }
+    fn is(&self, t: T, screen: bool) -> bool {
+        match self.idx.get(&t) {
+            None => return false,
+            Some(v) => match v {
+                IndexLoadState::Both => return true,
+                IndexLoadState::Mouse => match screen {
+                    true => return false,
+                    false => return true,
+                },
+                IndexLoadState::Screen => match screen {
+                    true => return true,
+                    false => return false,
+                },
+                IndexLoadState::None => return false,
+            },
+        }
+    }
+    pub fn is_both(&self, t: T) -> bool {
+        match self.idx.get(&t) {
+            None => return false,
+            Some(v) => match v {
+                IndexLoadState::Both => return true,
+                _ => return false,
+            },
+        };
     }
     pub fn clear_screen(&mut self, t: T) {
-        self.screen.remove(&t);
+        self.manage(t, false, true);
     }
     pub fn clear_mouse(&mut self, t: T) {
-        self.mouse.remove(&t);
+        self.manage(t, false, false);
     }
     pub fn is_screen(&self, t: T) -> bool {
-        return self.screen.contains_key(&t);
+        return self.is(t, true);
     }
     pub fn is_mouse(&self, t: T) -> bool {
-        return self.mouse.contains_key(&t);
+        return self.is(t, false);
     }
     pub fn add(&mut self, t: T) {
-        self.mouse.insert(t, ());
-        self.screen.insert(t, ());
+        self.idx.insert(t, IndexLoadState::Both);
     }
     pub fn add_screen(&mut self, t: T) {
-        self.screen.insert(t, ());
+        self.manage(t, true, true);
     }
     pub fn add_mouse(&mut self, t: T) {
-        self.mouse.insert(t, ());
+        self.manage(t, true, false);
+    }
+    pub fn is_empty(&self) -> bool {
+        return self.idx.is_empty();
+    }
+    pub fn remove(&mut self, t: T) {
+        self.idx.remove(&t);
     }
 }
 
 impl Indexers {
     pub fn new(node_mouse_b: i64, link_mouse_b: i64, screen_mouse_b: i64, size: usize) -> Self {
         return Self {
-            link_mouse_idx: MouseIndex::new(link_mouse_b, size * 8),
-            node_mouse_idx: MouseIndex::new(node_mouse_b, size * 32),
+            link_mouse_idx: MouseIndex::new(link_mouse_b, size),
+            node_mouse_idx: MouseIndex::new(node_mouse_b, size),
             screen_index: ScreenIndex::new(screen_mouse_b),
-            node_check: IsIndexed::new(size * 64),
-            link_check: IsIndexed::new(size * 64),
+            node_check: IsIndexed::new(size),
+            link_check: IsIndexed::new(size),
         };
+    }
+
+    pub fn reserve(&mut self, size: usize) {
+        self.link_mouse_idx.reserve(size);
+        self.node_mouse_idx.reserve(size);
+        self.node_check.reserve(size);
+        self.link_check.reserve(size);
+    }
+    pub fn shrink_to_fit(&mut self) {
+        self.link_mouse_idx.shrink_to_fit();
+        self.node_mouse_idx.shrink_to_fit();
+        self.node_check.shrink_to_fit();
+        self.link_check.shrink_to_fit();
     }
 
     pub fn clear_mouse_node(&mut self, node: &Node) {
@@ -334,6 +437,13 @@ impl<T: Eq + PartialEq + Hash + Copy + Clone + Ord> MouseIndex<T> {
             step,
             idx_x: HashMap::with_capacity(size),
         };
+    }
+
+    pub fn reserve(&mut self, size: usize) {
+        self.idx_x.reserve(size);
+    }
+    pub fn shrink_to_fit(&mut self) {
+        self.idx_x.shrink_to_fit();
     }
     pub fn clear(&mut self) {
         self.idx_x.clear();
