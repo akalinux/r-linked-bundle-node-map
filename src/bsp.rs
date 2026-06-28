@@ -2,6 +2,7 @@ use crate::{CalculatorTrait, PointBox, ScreenBox, Transform, link::LinkContainer
 use std::{
     collections::{BTreeMap, HashMap},
     hash::Hash,
+    mem,
     ops::RangeInclusive,
 };
 
@@ -22,6 +23,120 @@ pub struct ScreenBoundY {
 pub struct ScreenIndex {
     pub x: BTreeMap<i64, BTreeMap<i64, ScreenBoundY>>,
     pub step: i64,
+}
+
+pub struct OnScreen<'s> {
+    idx: &'s ScreenIndex,
+    x: RangeInclusive<i64>,
+    y: RangeInclusive<i64>,
+    cx: i64,
+    cy: i64,
+    next: Option<(Vec<u32>, Vec<u64>)>,
+    known_nodes: HashMap<u32, ()>,
+    known_links: HashMap<u64, ()>,
+}
+
+impl<'s> Iterator for OnScreen<'s> {
+    type Item = (Vec<u32>, Vec<u64>);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next.is_none() {
+            return None;
+        }
+
+        loop {
+            let x = self.cx;
+            let y = self.cy;
+            self.cy += self.idx.step;
+            if self.cy > *self.y.end() {
+                self.cy = *self.y.start();
+                self.cx += self.idx.step;
+            }
+            if x > *self.x.end() {
+                return None;
+            }
+
+            match self.idx.x.get(&x) {
+                Some(idx) => match idx.get(&y) {
+                    Some(idy) => {
+                        let kl = &mut self.known_links;
+                        let kn = &mut self.known_nodes;
+                        kl.reserve(idy.links.len());
+                        kn.reserve(idy.nodes.len());
+                        let mut links = Vec::with_capacity(idy.links.len());
+                        let mut nodes = Vec::with_capacity(idy.nodes.len());
+                        for lid in idy.links.keys() {
+                            if kl.contains_key(lid) {
+                                continue;
+                            }
+                            kl.insert(*lid, ());
+                            links.push(*lid);
+                        }
+                        for id in idy.nodes.keys() {
+                            if kn.contains_key(id) {
+                                continue;
+                            }
+                            kn.insert(*id, ());
+                            nodes.push(*id);
+                        }
+                        return mem::replace(&mut self.next, Some((nodes, links)));
+                    }
+                    _ => (),
+                },
+                _ => (),
+            }
+        }
+    }
+}
+impl<'s> OnScreen<'s> {
+    pub fn new(
+        idx: &'s ScreenIndex,
+        t: &Transform,
+        width: u32,
+        height: u32,
+        node_count: usize,
+    ) -> Self {
+        let view;
+        let sb;
+        match idx.max_screen() {
+            Some(s) => sb = s,
+            None => return Self::no_screen(idx),
+        }
+        let cmp = ScreenBox::new(t, width as u64, height as u64, idx.step);
+        match sb.contains(&cmp) {
+            Some(v) => view = v,
+            None => return Self::no_screen(idx),
+        }
+        let (x, y) = view.getxy_bounds();
+        let size = ((view.scale() / sb.scale()) * node_count as f64) as usize;
+        let known_nodes = HashMap::with_capacity(size);
+        let known_links = HashMap::with_capacity(size);
+        let mut res = Self {
+            idx,
+            cx: *x.start(),
+            cy: *y.start(),
+            x,
+            y,
+            known_links,
+            known_nodes,
+            next: Some((Vec::new(), Vec::new())),
+        };
+        // need our first pass to ensure the data is populated.
+        res.next();
+
+        return res;
+    }
+    fn no_screen(idx: &'s ScreenIndex) -> Self {
+        Self {
+            idx,
+            x: 0..=0,
+            y: 0..=0,
+            cy: 0,
+            cx: 0,
+            next: None,
+            known_links: HashMap::new(),
+            known_nodes: HashMap::new(),
+        }
+    }
 }
 
 impl ScreenIndex {

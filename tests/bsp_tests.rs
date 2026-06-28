@@ -4,12 +4,29 @@ use std::collections::HashMap;
 
 use linked_bundle_node_map::{
     PointBox, ScreenBox, Transform,
-    bsp::{IsIndexed, ScreenIndex},
+    bsp::{IsIndexed, OnScreen, ScreenIndex},
     calc::Options,
     link::{Animation, Link, LinkContainer},
     node::{Node, NodeStates},
 };
 
+#[test]
+fn screen_idx_iter_tests() {
+    let mut idx = ScreenIndex::new(5);
+    let t = Transform {
+        x: 0.0,
+        y: 0.0,
+        k: 1.0,
+    };
+    let mut iter = OnScreen::new(&idx, &t, 10, 10, 0);
+    assert!(iter.next().is_none());
+    let src = Node::new(1.0, 1.0, 2.0, 2.0, 0, String::from("test1"), 0, Vec::new());
+    let dst = Node::new(9.0, 9.0, 2.0, 2.0, 1, String::from("test2"), 0, Vec::new());
+    idx.index_node(src.id, (None, Some(src.index_bound(idx.step))));
+
+    iter = OnScreen::new(&idx, &t, 10, 10, 0);
+    assert_eq!(iter.next(), Some((vec![0], Vec::new())));
+}
 #[test]
 fn screen_index_tests() {
     let mut idx = ScreenIndex::new(10);
