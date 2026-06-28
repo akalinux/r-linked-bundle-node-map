@@ -24,7 +24,74 @@ pub struct Node {
     pub id: u32,
     pub label: String,
     pub opt: u32,
-    pub linked: Vec<u32>,
+    pub groups: Vec<u32>,
+}
+
+pub struct GetRelatedNodes<'n> {
+    nodes: &'n NodeStates,
+    known_nodes: HashMap<u32, ()>,
+    known_groups: HashMap<u32, ()>,
+    todo: Vec<u32>,
+}
+impl<'n> GetRelatedNodes<'n> {
+    pub fn new(init: &[u32], nodes: &'n NodeStates) -> Self {
+        let mut known_nodes = HashMap::with_capacity(init.len() * 2);
+        let known_groups = HashMap::with_capacity(init.len() * 2);
+        let mut todo = Vec::with_capacity(init.len() * 4);
+        for id in init {
+            if known_nodes.contains_key(id) || nodes.get(*id).is_none() {
+                continue;
+            }
+            known_nodes.insert(*id, ());
+            todo.push(*id)
+        }
+        let mut res = Self {
+            nodes,
+            known_nodes,
+            known_groups,
+            todo,
+        };
+        res.todo.reserve(init.len() * 2);
+        return res;
+    }
+}
+
+impl<'n> Iterator for GetRelatedNodes<'n> {
+    type Item = &'n Node;
+    fn next(&mut self) -> Option<Self::Item> {
+        let todo = &mut self.todo;
+        if todo.is_empty() {
+            return None;
+        }
+        let next = todo.pop().unwrap();
+        let known_nodes = &mut self.known_nodes;
+        let known_groups = &mut self.known_groups;
+        let nodes = self.nodes;
+        let groups = &self.nodes.get(next).unwrap().groups;
+        todo.reserve(groups.len());
+        known_nodes.reserve(groups.len());
+        known_groups.reserve(groups.len());
+
+        for group_id in groups {
+            if known_groups.contains_key(group_id) {
+                continue;
+            }
+            known_groups.insert(*group_id, ());
+            let list;
+            match nodes.groups.get(group_id) {
+                Some(l) => list = l,
+                None => continue,
+            }
+            for node_id in list {
+                if known_nodes.contains_key(node_id) || !self.nodes.nodes.contains_key(node_id) {
+                    continue;
+                }
+                known_nodes.insert(*node_id, ());
+                todo.push(*node_id);
+            }
+        }
+        return Some(nodes.get(next).unwrap());
+    }
 }
 
 #[wasm_bindgen(inspectable)]
@@ -67,7 +134,7 @@ impl Node {
         id: u32,
         label: String,
         opt: u32,
-        linked: Vec<u32>,
+        groups: Vec<u32>,
     ) -> Self {
         return Self {
             x,
@@ -77,7 +144,7 @@ impl Node {
             id,
             label,
             opt,
-            linked,
+            groups,
         };
     }
 
@@ -90,7 +157,7 @@ impl Node {
             self.id,
             String::from(&self.label),
             self.opt,
-            self.linked.clone(),
+            self.groups.clone(),
         );
     }
 }
@@ -131,13 +198,25 @@ impl PointBox for Node {
 pub struct NodeStates {
     pub updates: HashMap<u32, Node>,
     pub nodes: HashMap<u32, Node>,
+    pub groups: HashMap<u32, Vec<u32>>,
 }
 
 impl NodeStates {
+    pub fn get_related<'n>(&'n self, node_ids: &[u32]) -> GetRelatedNodes<'n> {
+        return GetRelatedNodes::new(node_ids, self);
+    }
+
+    pub fn group_add(&mut self, id: u32, nodes: &[u32]) -> Option<Vec<u32>> {
+        self.groups.insert(id, Vec::from(nodes))
+    }
+    pub fn group_remove(&mut self, id: u32) -> Option<Vec<u32>> {
+        self.groups.remove(&id)
+    }
     pub fn new(size: usize) -> Self {
         return Self {
             updates: HashMap::new(),
             nodes: HashMap::with_capacity(size),
+            groups: HashMap::new(),
         };
     }
     pub fn reserve(&mut self, size: usize) {

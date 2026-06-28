@@ -154,8 +154,12 @@ macro_rules! cul_lc {
 
 #[wasm_bindgen]
 impl Calculator {
-    #[wasm_bindgen(constructor)]
-    pub fn new(node_mouse_b: i64, link_mouse_b: i64, screen_mouse_b: i64, size: usize) -> Self {
+    pub fn new_with_settings(
+        node_mouse_b: i64,
+        link_mouse_b: i64,
+        screen_mouse_b: i64,
+        size: usize,
+    ) -> Self {
         return Self {
             links: HashMap::with_capacity(size),
             animations: HashMap::with_capacity(size),
@@ -177,11 +181,12 @@ impl Calculator {
         return self.nodes.get_node_changes();
     }
 
-    pub fn from_defaults() -> Self {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
         let mouse_b = (DEFAULT_NODE_R as i64) * 4;
         let link_b = mouse_b * 4;
-        let screen_b = link_b * 4;
-        return Self::new(mouse_b, link_b, screen_b, 256);
+        let screen_b: i64 = link_b * 4;
+        return Self::new_with_settings(mouse_b, link_b, screen_b, 256);
     }
     pub fn get_transform(&self) -> Transform {
         return self.transform;
@@ -275,6 +280,13 @@ impl Calculator {
         cul_lc!(self, lid);
         return res;
     }
+    pub fn group_add(&mut self, id: u32, nodes: &[u32]) -> Option<Vec<u32>> {
+        return self.nodes.group_add(id, nodes);
+    }
+
+    pub fn group_remove(&mut self, id: u32) -> Option<Vec<u32>> {
+        return self.nodes.group_remove(id);
+    }
 
     pub fn bundle_add(&mut self, bundle: Bundle) -> Option<Bundle> {
         let lid = bundle.get_container_id();
@@ -288,56 +300,32 @@ impl Calculator {
         return res;
     }
 
-    fn move_related_nodes(
-        node_id: &u32,
-        nodes: &mut NodeStates,
-        known: &mut HashMap<u32, ()>,
-        p: &Point,
-        idx: &mut Indexers,
-    ) {
-        if known.contains_key(node_id) {
-            return;
-        }
-        let node;
-        if let Some(n) = nodes.get(*node_id) {
-            idx.clear_node(n);
-
-            node = n.transform(p.x, p.y, 0.0, 0.0);
-        } else {
-            return;
-        }
-        nodes.update(node.transform(p.x, p.y, 0.0, 0.0));
-        known.insert(*node_id, ());
-        idx.index_screen_node(&node);
-        for node_id in &node.linked {
-            Self::move_related_nodes(node_id, nodes, known, p, idx);
-        }
-    }
-
     pub fn move_nodes(&mut self, node_ids: &[u32], p: &Point) {
-        let mut ns = HashMap::new();
         let idx = &mut self.indexer;
-        {
-            let nodes = &mut self.nodes;
-            for id in node_ids {
-                Self::move_related_nodes(id, nodes, &mut ns, p, idx);
+        let mut ns = Vec::with_capacity(node_ids.len() * 2);
+        let backlog = &mut self.backlog;
+        let nodes = &mut self.nodes;
+
+        for src in nodes.get_related(node_ids) {
+            ns.push(src.id);
+            let node = src.transform(p.x, p.y, 0.0, 0.0);
+            idx.clear_node(&node);
+            idx.index_screen_node(&node);
+            if !backlog.nodes.contains_key(&node.id) {
+                backlog.nodes.insert(node.id, ());
             }
         }
 
-        let backlog = &mut self.backlog;
         let mut ls = HashMap::new();
-        for id in ns.keys() {
-            if !backlog.nodes.contains_key(id) {
-                backlog.nodes.insert(*id, ());
-            }
-            if let Some(links) = self.node_links.get(id) {
+        for id in ns {
+            if let Some(links) = self.node_links.get(&id) {
                 for lid in links.keys() {
                     if ls.contains_key(lid) {
                         continue;
                     }
                     let link = self.links.get_mut(lid).unwrap();
                     ls.insert(*lid, ());
-                    idx.clear_link(link);
+                    idx.clear_mouse_link(link);
                     idx.index_screen_link(link);
                     if !backlog.links.contains_key(lid) {
                         backlog.links.insert(*lid, ());

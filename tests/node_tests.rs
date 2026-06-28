@@ -1,5 +1,8 @@
 #![cfg(test)]
-use linked_bundle_node_map::{CalculatorTrait, ContainsPoint, Point, PointBox, node::Node};
+use linked_bundle_node_map::{
+    CalculatorTrait, ContainsPoint, Point, PointBox,
+    node::{Node, NodeStates},
+};
 
 #[test]
 fn node_box() {
@@ -66,4 +69,48 @@ fn node_box() {
     point.x = point.x.floor();
     point.y = point.y.floor();
     assert_eq!(point, Point { x: 2.0, y: 2.0 });
+}
+
+#[test]
+fn get_related_node_tests() {
+    let mut nodes = NodeStates::new(3);
+    let l = String::from("value");
+    nodes.insert(Node {
+        x: 0.0,
+        y: 0.0,
+        h: 2.0,
+        w: 2.0,
+        id: 0,
+        label: l.clone(),
+        opt: 0,
+        groups: Vec::from([0, 1]),
+    });
+    nodes.insert(Node {
+        x: 0.0,
+        y: 0.0,
+        h: 2.0,
+        w: 2.0,
+        id: 1,
+        label: l.clone(),
+        opt: 0,
+        groups: Vec::from([2, 1]),
+    });
+    nodes.insert(Node {
+        x: 0.0,
+        y: 0.0,
+        h: 2.0,
+        w: 2.0,
+        id: 3,
+        label: l.clone(),
+        opt: 0,
+        groups: Vec::from([0, 3]),
+    });
+    nodes.group_add(0, &[1, 2]);
+    nodes.group_add(1, &[1, 3, 5]);
+    let mut iter = nodes.get_related(&[0]);
+    assert_eq!(iter.next().unwrap().id, 0);
+    assert_eq!(iter.next().unwrap().id, 3);
+    assert_eq!(iter.next().unwrap().id, 1);
+    assert!(iter.next().is_none());
+    assert!(!nodes.nodes.is_empty());
 }
