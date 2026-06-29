@@ -5,6 +5,32 @@ use linked_bundle_node_map::{
 };
 
 #[test]
+fn node_box_negative() {
+    assert_eq!(
+        Node::new(
+            -2.0,
+            -2.0,
+            1.0,
+            1.0,
+            0,
+            String::from("label"),
+            0,
+            Vec::new(),
+        )
+        .index_bound(5),
+        (-5..=-5, -5..=-5)
+    );
+
+    assert_eq!(
+        Node::new(0.5, 0.5, 1.0, 1.0, 0, String::from("label"), 0, Vec::new(),).index_bound(5),
+        (0..=0, 0..=0)
+    );
+    assert_eq!(
+        Node::new(0.0, 0.0, 1.0, 1.0, 0, String::from("label"), 0, Vec::new(),).index_bound(5),
+        (-5..=0, -5..=0)
+    );
+}
+#[test]
 fn node_box() {
     let mut node = Node::new(0.5, 0.5, 1.0, 1.0, 0, String::from("label"), 0, Vec::new());
 

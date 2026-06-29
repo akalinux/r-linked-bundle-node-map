@@ -10,28 +10,48 @@ pub mod constants;
 pub mod link;
 pub mod node;
 
+#[wasm_bindgen(inspectable)]
 #[derive(PartialEq, PartialOrd, Eq, Ord, Clone, Copy, Debug)]
 pub struct ScreenBox {
-    pub width: u64,
-    pub height: u64,
+    pub width: u32,
+    pub height: u32,
     pub x: i64,
     pub y: i64,
     pub step: i64,
 }
 
+#[wasm_bindgen]
 impl ScreenBox {
-    pub fn new(t: &Transform, mut width: u64, mut height: u64, step: i64) -> Self {
-        width = (width as f64 / t.k) as u64;
-        height = (height as f64 / t.k) as u64;
-        let mut m = width % step as u64;
+    pub fn from_step(x: i64, y: i64, step: i64) -> Self {
+        Self {
+            width: step as u32,
+            height: step as u32,
+            x,
+            y,
+            step,
+        }
+    }
+    pub fn empty() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            x: 0,
+            y: 0,
+            step: 0,
+        }
+    }
+    pub fn new(t: &Transform, mut width: u32, mut height: u32, step: i64) -> Self {
+        width = (width as f64 / t.k) as u32;
+        height = (height as f64 / t.k) as u32;
+        let mut m = width % step as u32;
         if m == 0 {
-            width -= step as u64;
+            width -= step as u32;
         } else {
             width -= m;
         }
-        m = height % step as u64;
+        m = height % step as u32;
         if m == 0 {
-            height -= step as u64;
+            height -= step as u32;
         } else {
             height -= m;
         }
@@ -39,16 +59,12 @@ impl ScreenBox {
         let x = p.x as i64;
         let y = p.y as i64;
         return Self {
-            width: width + step as u64,
-            height: height + step as u64,
+            width: width + step as u32,
+            height: height + step as u32,
             x,
             y,
             step,
         };
-    }
-
-    pub fn getxy_bounds(&self) -> IndexXY {
-        return (self.x..=self.bound_x(), self.y..=self.bound_y());
     }
 
     pub fn scale(&self) -> f64 {
@@ -97,9 +113,9 @@ impl ScreenBox {
             let mut end = b.max_x();
             let mut max = self.max_x();
             if end > max {
-                width = (max - x) as u64;
+                width = (max - x) as u32;
             } else {
-                width = (end - x) as u64;
+                width = (end - x) as u32;
             }
 
             if b.y < self.x {
@@ -110,9 +126,9 @@ impl ScreenBox {
             end = b.max_y();
             max = self.max_y();
             if end > max {
-                height = (max - y) as u64;
+                height = (max - y) as u32;
             } else {
-                height = (end - y) as u64;
+                height = (end - y) as u32;
             }
 
             return Some(ScreenBox {
@@ -126,7 +142,11 @@ impl ScreenBox {
         return None;
     }
 }
-
+impl ScreenBox {
+    pub fn getxy_bounds(&self) -> IndexXY {
+        return (self.x..=self.bound_x(), self.y..=self.bound_y());
+    }
+}
 /// Map Movement transformation struct.
 #[wasm_bindgen(inspectable)]
 pub struct Move {
@@ -259,15 +279,19 @@ pub trait PointBox {
     }
 
     fn index_bound(&self, boundry: i64) -> IndexXY {
-        let min_x = self.get_min_x() as i64;
-        let max_x = self.get_max_x() as i64;
-        let min_y = self.get_min_y() as i64;
-        let max_y = self.get_max_y() as i64;
-        let sx = min_x - (min_x % boundry);
-        let ex = max_x + (max_x % boundry);
-        let sy = min_y - (min_y % boundry);
-        let ey = max_y + (max_y % boundry);
-        return (sx..=ex, sy..=ey);
+        let mut min_x = self.get_min_x().floor() as i64;
+        let mut min_y = self.get_min_y().floor() as i64;
+        let mut max_x = self.get_max_x().ceil() as i64;
+        let mut max_y = self.get_max_y().ceil() as i64;
+        for i in [&mut min_x, &mut min_y, &mut max_x, &mut max_y] {
+            let m = *i % boundry;
+            if m < 0 {
+                *i -= boundry + m;
+            } else {
+                *i -= m;
+            }
+        }
+        return (min_x..=max_x, min_y..=max_y);
     }
 
     fn getx_index_bound(&self, boundry: i64) -> i64 {

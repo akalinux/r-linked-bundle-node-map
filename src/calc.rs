@@ -8,6 +8,7 @@ use crate::{
     },
     node::{Node, NodeOpt, NodeStates},
 };
+use pastey::paste;
 use std::collections::HashMap;
 use std::mem;
 use wasm_bindgen::prelude::*;
@@ -91,7 +92,6 @@ pub struct Calculator {
     bundle_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Bundle instances to LinkContainer instances
     link_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Link instances to LinkContainer instances
     nodes: NodeStates,
-
     backlog: BacklogUpdates,
     links: HashMap<u64, LinkContainer>,
     animations: HashMap<u64, ()>,
@@ -99,6 +99,31 @@ pub struct Calculator {
     transform: Transform,
     indexer: Indexers,
 }
+
+macro_rules! calc_acl {
+    ($field:ident,$t:ty) => {
+        paste! {
+            impl<'c> Calculator {
+                pub fn [<$field>](&'c self) -> &'c $t {
+                    return &self.$field
+                }
+
+                pub fn [<$field _mut>](&'c mut self) -> &'c mut $t {
+                    return &mut self.$field
+                }
+            }
+        }
+    };
+}
+calc_acl!(node_links,HashMap<u32,HashMap<u64,()>>);
+calc_acl!(bundle_links,HashMap<u32,HashMap<u64,()>>);
+calc_acl!(link_links,HashMap<u32,HashMap<u64,()>>);
+calc_acl!(nodes, NodeStates);
+calc_acl!(backlog, BacklogUpdates);
+calc_acl!(links, HashMap<u64,LinkContainer>);
+calc_acl!(animations, HashMap<u64,()>);
+calc_acl!(options, Options);
+calc_acl!(indexer, Indexers);
 
 impl CalculatorTrait for Calculator {}
 

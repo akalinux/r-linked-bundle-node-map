@@ -31,13 +31,13 @@ pub struct OnScreen<'s> {
     y: RangeInclusive<i64>,
     cx: i64,
     cy: i64,
-    next: Option<(Vec<u32>, Vec<u64>)>,
+    next: Option<(Vec<u32>, Vec<u64>, ScreenBox)>,
     known_nodes: HashMap<u32, ()>,
     known_links: HashMap<u64, ()>,
 }
 
 impl<'s> Iterator for OnScreen<'s> {
-    type Item = (Vec<u32>, Vec<u64>);
+    type Item = (Vec<u32>, Vec<u64>, ScreenBox);
     fn next(&mut self) -> Option<Self::Item> {
         if self.next.is_none() {
             return None;
@@ -52,7 +52,7 @@ impl<'s> Iterator for OnScreen<'s> {
                 self.cx += self.idx.step;
             }
             if x > *self.x.end() {
-                return None;
+                return mem::replace(&mut self.next, None);
             }
 
             match self.idx.x.get(&x) {
@@ -78,7 +78,13 @@ impl<'s> Iterator for OnScreen<'s> {
                             kn.insert(*id, ());
                             nodes.push(*id);
                         }
-                        return mem::replace(&mut self.next, Some((nodes, links)));
+                        if nodes.is_empty() && links.is_empty() {
+                            continue;
+                        }
+                        return mem::replace(
+                            &mut self.next,
+                            Some((nodes, links, ScreenBox::from_step(x, y, self.idx.step))),
+                        );
                     }
                     _ => (),
                 },
@@ -88,28 +94,21 @@ impl<'s> Iterator for OnScreen<'s> {
     }
 }
 impl<'s> OnScreen<'s> {
-    pub fn new(
-        idx: &'s ScreenIndex,
-        t: &Transform,
-        width: u32,
-        height: u32,
-        node_count: usize,
-    ) -> Self {
+    pub fn new(idx: &'s ScreenIndex, t: &Transform, width: u32, height: u32) -> Self {
         let view;
         let sb;
         match idx.max_screen() {
             Some(s) => sb = s,
             None => return Self::no_screen(idx),
         }
-        let cmp = ScreenBox::new(t, width as u64, height as u64, idx.step);
+        let cmp = ScreenBox::new(t, width, height, idx.step);
         match sb.contains(&cmp) {
             Some(v) => view = v,
             None => return Self::no_screen(idx),
         }
         let (x, y) = view.getxy_bounds();
-        let size = ((view.scale() / sb.scale()) * node_count as f64) as usize;
-        let known_nodes = HashMap::with_capacity(size);
-        let known_links = HashMap::with_capacity(size);
+        let known_nodes = HashMap::new();
+        let known_links = HashMap::new();
         let mut res = Self {
             idx,
             cx: *x.start(),
@@ -118,7 +117,7 @@ impl<'s> OnScreen<'s> {
             y,
             known_links,
             known_nodes,
-            next: Some((Vec::new(), Vec::new())),
+            next: Some((Vec::new(), Vec::new(), ScreenBox::empty())),
         };
         // need our first pass to ensure the data is populated.
         res.next();
@@ -158,8 +157,8 @@ impl ScreenIndex {
         let (end_y, _) = y_t.last_key_value().unwrap();
         let end_x = *end_x + self.step;
         let end_y = *end_y + self.step;
-        let width = (end_x - start_x) as u64;
-        let height = (end_y - start_y) as u64;
+        let width = (end_x - start_x) as u32;
+        let height = (end_y - start_y) as u32;
         return Some(ScreenBox {
             x: *start_x,
             y: *start_y,
@@ -169,56 +168,8 @@ impl ScreenIndex {
         });
     }
 
-    pub fn on_screen(
-        &self,
-        width: u32,
-        height: u32,
-        t: &Transform,
-        node_count: u32,
-    ) -> (Vec<u32>, Vec<u64>) {
-        match self.max_screen() {
-            Some(sb) => {
-                let cmp = ScreenBox::new(t, width as u64, height as u64, self.step);
-                match sb.contains(&cmp) {
-                    Some(view) => {
-                        // if we got here.. then we have a valid view point
-                        let size = ((view.scale() / sb.scale()) * node_count as f64) as usize;
-                        let mut nodes = Vec::with_capacity(size);
-                        let mut links = Vec::with_capacity(size);
-                        let mut known_nodes = HashMap::with_capacity(size);
-                        let mut known_links = HashMap::with_capacity(size);
-                        let (x, y) = view.getxy_bounds();
-                        let idx = &self.x;
-                        for x in x.step_by(self.step as usize) {
-                            for y in y.clone().step_by(self.step as usize) {
-                                let sets = idx.get(&x).unwrap().get(&y).unwrap();
-                                for (node_id, _) in &sets.nodes {
-                                    if known_nodes.contains_key(node_id) {
-                                        continue;
-                                    }
-                                    nodes.push(*node_id);
-                                    known_nodes.insert(*node_id, ());
-                                }
-                                for (link_id, _) in &sets.links {
-                                    if known_links.contains_key(link_id) {
-                                        continue;
-                                    }
-                                    links.push(*link_id);
-                                    known_links.insert(*link_id, ());
-                                }
-                            }
-                        }
-                        // free any lost memory here!
-                        nodes.shrink_to_fit();
-                        links.shrink_to_fit();
-                        return (nodes, links);
-                    }
-                    None => (),
-                }
-                return (Vec::new(), Vec::new());
-            }
-            None => return (Vec::new(), Vec::new()),
-        }
+    pub fn on_screen<'s>(&'s self, width: u32, height: u32, t: &Transform) -> OnScreen<'s> {
+        return OnScreen::new(self, t, width, height);
     }
 }
 

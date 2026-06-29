@@ -150,4 +150,28 @@ fn test_screen_contains() {
         }),
         None
     );
+
+    assert_eq!(
+        ScreenBox {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 10,
+            step: 5
+        }
+        .contains(&ScreenBox {
+            width: 10,
+            height: 10,
+            x: 5,
+            y: 5,
+            step: 5
+        }),
+        Some(ScreenBox {
+            width: 5,
+            height: 5,
+            x: 5,
+            y: 5,
+            step: 5,
+        })
+    );
 }
