@@ -2,7 +2,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::{
     bsp::IndexXY,
-    constants::{RAD2DEG, TRIANGLE_MARGINE_FOR_ERROR, ZERO_POINT},
+    constants::{RAD2DEG, SCREEN_EPSILON, TRIANGLE_MARGINE_FOR_ERROR, ZERO_POINT},
 };
 pub mod bsp;
 pub mod calc;
@@ -78,15 +78,38 @@ impl ScreenBox {
         let y = self.y as f64 + (self.height as f64 * 0.5);
         return Point { x, y };
     }
-    pub fn center_in(&self, inside: &ScreenBox) -> Point {
-        let c = inside.get_center();
-        let s = self.get_center();
-        let sx = c.x / s.x;
-        let sy = c.y / s.y;
-        return Point {
-            x: s.x * sx,
-            y: s.y * sy,
-        };
+
+    /// Returns a [Point] that represents where to place the screen [ScreenBox] so that it will be centered inside of self.
+    pub fn center(&self, screen: &ScreenBox) -> Point {
+        let inlay_point = screen.get_center();
+        let host_point = self.get_center();
+        let mut x: f64 = 0.0;
+        let mut y: f64 = 0.0;
+        for (inlay, host, host_size, t) in [
+            (inlay_point.x, host_point.x, self.width as f64 * 0.5, &mut x),
+            (
+                inlay_point.y,
+                host_point.y,
+                self.height as f64 * 0.5,
+                &mut y,
+            ),
+        ] {
+            if inlay.abs() < SCREEN_EPSILON {
+                if host.abs() < SCREEN_EPSILON {
+                    *t = host_size;
+                } else {
+                    *t = host + host_size;
+                }
+            } else if host.abs() < SCREEN_EPSILON {
+                let distance = host - inlay;
+                *t = distance + inlay + host_size;
+            } else {
+                let scale = host / inlay;
+                *t = inlay * scale;
+            }
+        }
+
+        return Point { x, y };
     }
 
     pub fn contains_x(&self, x: i64) -> bool {
@@ -158,6 +181,7 @@ impl ScreenBox {
         return None;
     }
 }
+
 impl ScreenBox {
     pub fn getxy_bounds(&self) -> IndexXY {
         return (self.x..=self.bound_x(), self.y..=self.bound_y());

@@ -7,7 +7,7 @@ use crate::{
     bsp::{IndexPart, IndexSet, Indexers},
     calc::{BacklogUpdates, Options},
     constants::{
-        DEFAULT_ANIMATION, DEFAULT_ANIMATION_DASHES, DEFAULT_ANIMATION_WIDTH_SCALE,
+        DEFAULT_ANIMATION_COLOR, DEFAULT_ANIMATION_DASHES, DEFAULT_ANIMATION_WIDTH_SCALE,
         DEFAULT_BUNDLE_COLOR, DEFAULT_COLOR, DEFAULT_LINK_SCALE, DEFAULT_OPT_NAME,
     },
     node::{Node, NodeStates},
@@ -408,7 +408,7 @@ impl LinkOpt {
             id: 0,
             label: String::from(DEFAULT_OPT_NAME),
             color: String::from(DEFAULT_COLOR),
-            animation_color: String::from(DEFAULT_ANIMATION),
+            animation_color: String::from(DEFAULT_ANIMATION_COLOR),
             animation_dashes: Vec::from(DEFAULT_ANIMATION_DASHES),
         };
     }

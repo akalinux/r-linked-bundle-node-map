@@ -192,6 +192,17 @@ fn screen_center() {
         y: 0,
         step: 0,
     };
-    assert_eq!(a.center_in(&b), Point { x: 5.0, y: 5.0 });
-    assert_eq!(b.center_in(&a), Point { x: 2.5, y: 2.5 });
+    assert_eq!(a.center(&b), Point { x: 2.5, y: 2.5 });
+    assert_eq!(b.center(&a), Point { x: 5.0, y: 5.0 });
+    let c = ScreenBox {
+        width: 10,
+        height: 10,
+        x: -5,
+        y: -5,
+        step: 0,
+    };
+    assert_eq!(c.get_center(), Point { x: 0.0, y: 0.0 });
+    assert_eq!(c.center(&b), Point { x: 5.0, y: 5.0 });
+    assert_eq!(c.center(&c), Point { x: 5.0, y: 5.0 });
+    assert_eq!(b.center(&c), Point { x: 10.0, y: 10.0 });
 }
