@@ -73,6 +73,22 @@ impl ScreenBox {
             / 2.0;
     }
 
+    pub fn get_center(&self) -> Point {
+        let x = self.x as f64 + (self.width as f64 * 0.5);
+        let y = self.y as f64 + (self.height as f64 * 0.5);
+        return Point { x, y };
+    }
+    pub fn center_in(&self, inside: &ScreenBox) -> Point {
+        let c = inside.get_center();
+        let s = self.get_center();
+        let sx = c.x / s.x;
+        let sy = c.y / s.y;
+        return Point {
+            x: s.x * sx,
+            y: s.y * sy,
+        };
+    }
+
     pub fn contains_x(&self, x: i64) -> bool {
         return !(self.x > x || self.bound_x() < x);
     }

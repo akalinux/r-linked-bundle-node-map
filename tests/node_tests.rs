@@ -140,3 +140,40 @@ fn get_related_node_tests() {
     assert!(iter.next().is_none());
     assert!(!nodes.nodes.is_empty());
 }
+
+#[test]
+fn center_tests() {
+    let mut ns = NodeStates::new(2);
+    assert_eq!(ns.get_center(), Point { x: 0.0, y: 0.0 });
+    let l = String::from("value");
+    let a = Node {
+        x: 0.0,
+        y: 0.0,
+        h: 2.0,
+        w: 2.0,
+        id: 0,
+        label: l.clone(),
+        opt: 0,
+        groups: Vec::from([0, 1]),
+    };
+    let b = Node {
+        x: 5.0,
+        y: 5.0,
+        h: 2.0,
+        w: 2.0,
+        id: 1,
+        label: l.clone(),
+        opt: 0,
+        groups: Vec::from([0, 1]),
+    };
+    ns.insert(a.clone());
+    assert_eq!(ns.get_center(), Point { x: 0.0, y: 0.0 });
+    ns.insert(b.clone());
+    assert_eq!(ns.get_center(), Point { x: 2.5, y: 2.5 });
+    ns.update(b.transform(5.0, 5.0, 0.0, 0.0));
+    assert_eq!(ns.get_center(), Point { x: 5.0, y: 5.0 });
+    ns.insert(b.clone());
+    assert_eq!(ns.get_center(), Point { x: 2.5, y: 2.5 });
+    ns.remove(b.id);
+    assert_eq!(ns.get_center(), Point { x: 0.0, y: 0.0 });
+}

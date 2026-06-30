@@ -199,6 +199,7 @@ pub struct NodeStates {
     pub updates: HashMap<u32, Node>,
     pub nodes: HashMap<u32, Node>,
     pub groups: HashMap<u32, Vec<u32>>,
+    pub center: Point,
 }
 
 impl NodeStates {
@@ -217,6 +218,7 @@ impl NodeStates {
             updates: HashMap::new(),
             nodes: HashMap::with_capacity(size),
             groups: HashMap::new(),
+            center: Point { x: 0.0, y: 0.0 },
         };
     }
     pub fn reserve(&mut self, size: usize) {
@@ -239,15 +241,46 @@ impl NodeStates {
     }
 
     pub fn insert(&mut self, node: Node) -> Option<Node> {
-        self.updates.remove(&node.id);
+        let res = self.updates.remove(&node.id);
+        if let Some(n) = res {
+            self.center.x -= n.x;
+            self.center.y -= n.y;
+        }
+        self.center.x += node.x;
+        self.center.y += node.y;
         return self.nodes.insert(node.id, node);
     }
 
     pub fn remove(&mut self, id: u32) -> Option<Node> {
         self.updates.remove(&id);
-        return self.nodes.remove(&id);
+        let res = self.nodes.remove(&id);
+
+        if let Some(n) = &res {
+            self.center.x -= n.x;
+            self.center.y -= n.y;
+        }
+        return res;
+    }
+
+    pub fn get_center(&self) -> Point {
+        if self.nodes.is_empty() {
+            return Point { x: 0.0, y: 0.0 };
+        }
+        return Point {
+            x: self.center.x / self.nodes.len() as f64,
+            y: self.center.y / self.nodes.len() as f64,
+        };
     }
     pub fn update(&mut self, node: Node) -> Option<Node> {
+        if let Some(node) = self.updates.get(&node.id) {
+            self.center.x -= node.x;
+            self.center.y -= node.y;
+        } else if let Some(node) = self.nodes.get(&node.id) {
+            self.center.x -= node.x;
+            self.center.y -= node.y;
+        }
+        self.center.x += node.x;
+        self.center.y += node.y;
         return self.updates.insert(node.id, node);
     }
 

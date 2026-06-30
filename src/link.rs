@@ -4,14 +4,351 @@ use wasm_bindgen::prelude::*;
 
 use crate::{
     CalculatorTrait, GetCenter, Point, PointBox,
-    bsp::{IndexPart, IndexSet},
-    calc::Options,
+    bsp::{IndexPart, IndexSet, Indexers},
+    calc::{BacklogUpdates, Options},
     constants::{
         DEFAULT_ANIMATION, DEFAULT_ANIMATION_DASHES, DEFAULT_ANIMATION_WIDTH_SCALE,
         DEFAULT_BUNDLE_COLOR, DEFAULT_COLOR, DEFAULT_LINK_SCALE, DEFAULT_OPT_NAME,
     },
     node::{Node, NodeStates},
 };
+
+pub struct LinkStates {
+    pub bulk: bool,
+    pub links: HashMap<u64, LinkContainer>,
+    pub updates: HashMap<u64, LinkContainer>,
+    pub node_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Node instances to LinkContainer instances
+    pub bundle_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Bundle instances to LinkContainer instances
+    pub link_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Link instances to LinkContainer instances
+}
+
+impl LinkStates {
+    pub fn new() -> Self {
+        Self {
+            bulk: false,
+            links: HashMap::new(),
+            updates: HashMap::new(),
+            node_links: HashMap::new(),
+            bundle_links: HashMap::new(),
+            link_links: HashMap::new(),
+        }
+    }
+    pub fn reserve(&mut self, size: usize) {
+        self.links.reserve(size);
+        self.node_links.reserve(size);
+        self.bundle_links.reserve(size);
+        self.link_links.reserve(size);
+    }
+    pub fn shrink_to_fit(&mut self) {
+        self.links.shrink_to_fit();
+        self.updates.shrink_to_fit();
+        self.node_links.shrink_to_fit();
+        self.bundle_links.shrink_to_fit();
+        self.link_links.shrink_to_fit();
+    }
+
+    pub fn set_bulk(&mut self, bulk: bool) {
+        self.bulk = bulk;
+    }
+
+    pub fn bulk_update<'l>(
+        &mut self,
+        updates: impl Iterator<Item = &'l u64>,
+        nodes: &NodeStates,
+        ops: &mut Options,
+        animations: &mut HashMap<u64, ()>,
+        idx: &mut Indexers,
+        all: bool,
+    ) {
+        for lid in updates {
+            match self.get_mut(lid) {
+                Some(lc) => {
+                    if all {
+                        lc.update(nodes, ops, animations);
+                        idx.add_link(lc);
+                    } else {
+                        idx.index_mouse_link(lc);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    pub fn update_links(
+        &mut self,
+        node_id: u32,
+        idx: &mut Indexers,
+        nodes: &NodeStates,
+        ops: &mut Options,
+        animations: &mut HashMap<u64, ()>,
+        backlog: &mut BacklogUpdates,
+    ) {
+        match self.node_links.get(&node_id) {
+            Some(nl) => {
+                for i in nl.keys() {
+                    let lc;
+                    if let Some(l) = self.updates.get_mut(i) {
+                        lc = l;
+                    } else if let Some(l) = self.links.get_mut(i) {
+                        lc = l;
+                    } else {
+                        continue;
+                    }
+                    if self.bulk {
+                        backlog.links.insert(*i, ());
+                    } else {
+                        lc.update(nodes, ops, animations);
+                        idx.add_link(lc);
+                    }
+                }
+            }
+            _ => return,
+        }
+    }
+    fn manage_nl(&mut self, id: u64, add: bool) {
+        let (src, dst) = unsafe { mem::transmute::<u64, (u32, u32)>(id) };
+        for n in [src, dst] {
+            let mut empty = true;
+            match self.node_links.get_mut(&n) {
+                Some(nl) => {
+                    if add {
+                        empty = false;
+                        nl.insert(id, ());
+                    } else {
+                        nl.remove(&id);
+                        empty = nl.is_empty()
+                    }
+                }
+                None => {}
+            };
+            if !add && empty {
+                self.node_links.remove(&n);
+            }
+        }
+    }
+    fn manage<'l>(
+        &'l mut self,
+        id: u64,
+        add: bool,
+        old: &mut Option<LinkContainer>,
+    ) -> Option<&'l mut LinkContainer> {
+        let exists;
+        let empty;
+        match self.links.get(&id) {
+            Some(lc) => {
+                exists = true;
+                empty = lc.is_empty()
+            }
+            None => {
+                exists = false;
+                empty = true
+            }
+        }
+        match add {
+            true => {
+                match exists {
+                    true => {
+                        if let Some(l) = self.updates.remove(&id) {
+                            self.links.insert(id, l);
+                        };
+                    }
+                    false => {
+                        self.links.insert(id, LinkContainer::new_id(id));
+                    }
+                };
+
+                return self.links.get_mut(&id);
+            }
+            false => {
+                match exists {
+                    true => match empty {
+                        true => {
+                            if let Some(res) = self.updates.remove(&id) {
+                                *old = Some(res);
+                            }
+                            if old.is_none()
+                                && let Some(res) = self.links.remove(&id)
+                            {
+                                *old = Some(res);
+                            }
+                        }
+                        _ => (),
+                    },
+                    _ => (),
+                };
+                return None;
+            }
+        };
+    }
+    pub fn get<'l>(&'l self, id: &u64) -> Option<&'l LinkContainer> {
+        match self.updates.get(id) {
+            Some(l) => return Some(l),
+            _ => (),
+        };
+        return self.links.get(id);
+    }
+
+    pub fn get_mut<'l>(&'l mut self, id: &u64) -> Option<&'l mut LinkContainer> {
+        match self.updates.get_mut(id) {
+            Some(l) => return Some(l),
+            _ => (),
+        };
+        return self.links.get_mut(id);
+    }
+
+    pub fn get_mut_for_change<'l>(&'l mut self, id: &u64) -> Option<&'l mut LinkContainer> {
+        return self.manage(*id, true, &mut None);
+    }
+
+    pub fn manage_cross_link(&mut self, add: bool, id: u32, src: u32, dst: u32, link: bool) {
+        let cross;
+        if link {
+            cross = &mut self.link_links;
+        } else {
+            cross = &mut self.bundle_links;
+        }
+        let empty;
+        let lid = create_container_id(src, dst);
+        match add {
+            true => match cross.get_mut(&id) {
+                Some(l) => {
+                    l.insert(lid, ());
+                    empty = false;
+                }
+                None => {
+                    cross.insert(id, HashMap::from([(lid, ())]));
+                    empty = false;
+                }
+            },
+            false => match cross.get_mut(&id) {
+                Some(l) => {
+                    l.remove(&lid);
+                    empty = l.is_empty();
+                }
+                None => {
+                    empty = true;
+                }
+            },
+        }
+
+        if !add && empty {
+            cross.remove(&id);
+        }
+    }
+    pub fn link_add<'l>(
+        &'l mut self,
+        link: Link,
+        nodes: &NodeStates,
+        ops: &mut Options,
+        animations: &mut HashMap<u64, ()>,
+    ) -> &'l mut LinkContainer {
+        self.manage_cross_link(true, link.id, link.src, link.dst, true);
+        let bulk = self.bulk;
+        let id = link.get_container_id();
+        self.manage_nl(id, true);
+        let lc = self
+            .manage(link.get_container_id(), true, &mut None)
+            .unwrap();
+        lc.add_link(link);
+        if !bulk {
+            lc.update(nodes, ops, animations);
+        }
+        return lc;
+    }
+    pub fn link_remove(
+        &mut self,
+        id: u32,
+        nodes: &NodeStates,
+        ops: &mut Options,
+        animations: &mut HashMap<u64, ()>,
+    ) -> Vec<LinkContainer> {
+        let mut removed = Vec::new();
+        let bulk = self.bulk;
+        let links;
+        if let Some(l) = self.link_links.remove(&id) {
+            links = l;
+        } else {
+            return removed;
+        }
+        for lid in links.keys() {
+            let src;
+            let dst;
+
+            {
+                let link = self.links.get_mut(&lid).unwrap();
+                link.remove_link(id);
+                if !bulk {
+                    link.update(nodes, ops, animations);
+                }
+
+                (src, dst) = link.get_node_ids();
+            }
+            self.manage_nl(*lid, false);
+            let mut rm = None;
+            self.manage(*lid, false, &mut rm);
+            if let Some(lc) = rm {
+                removed.push(lc);
+            }
+            self.manage_cross_link(false, id, src, dst, true);
+        }
+        return removed;
+    }
+    pub fn bundle_add<'l>(
+        &'l mut self,
+        bunlde: Bundle,
+        nodes: &NodeStates,
+        ops: &mut Options,
+        animations: &mut HashMap<u64, ()>,
+    ) -> &'l mut LinkContainer {
+        let bulk = self.bulk;
+        self.manage_cross_link(true, bunlde.id, bunlde.src, bunlde.dst, false);
+        let lc = self
+            .manage(bunlde.get_container_id(), true, &mut None)
+            .unwrap();
+        lc.add_bundle(bunlde);
+        if !bulk {
+            lc.update(nodes, ops, animations);
+        }
+        return lc;
+    }
+    pub fn bundle_remove(
+        &mut self,
+        id: u32,
+        nodes: &NodeStates,
+        ops: &mut Options,
+        animations: &mut HashMap<u64, ()>,
+    ) -> Vec<LinkContainer> {
+        let mut removed = Vec::new();
+        let bulk = self.bulk;
+        let bundles;
+        if let Some(l) = self.bundle_links.remove(&id) {
+            bundles = l;
+        } else {
+            return removed;
+        }
+        for lid in bundles.keys() {
+            let src;
+            let dst;
+
+            {
+                let link = self.links.get_mut(&lid).unwrap();
+                link.remove_bundle(id);
+                if !bulk {
+                    link.update(nodes, ops, animations);
+                }
+
+                (src, dst) = link.get_node_ids();
+            }
+            let mut rm = None;
+            self.manage(*lid, false, &mut rm);
+            if let Some(lc) = rm {
+                removed.push(lc);
+            }
+            self.manage_cross_link(false, id, src, dst, false);
+        }
+        return removed;
+    }
+}
 
 #[wasm_bindgen]
 #[derive(Clone, Copy)]

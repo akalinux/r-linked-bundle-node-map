@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use linked_bundle_node_map::{ScreenBox, Transform};
+use linked_bundle_node_map::{Point, ScreenBox, Transform};
 
 #[test]
 fn test_screenbox_new() {
@@ -174,4 +174,24 @@ fn test_screen_contains() {
             step: 5,
         })
     );
+}
+
+#[test]
+fn screen_center() {
+    let a = ScreenBox {
+        width: 5,
+        height: 5,
+        x: 0,
+        y: 0,
+        step: 0,
+    };
+    let b = ScreenBox {
+        width: 10,
+        height: 10,
+        x: 0,
+        y: 0,
+        step: 0,
+    };
+    assert_eq!(a.center_in(&b), Point { x: 5.0, y: 5.0 });
+    assert_eq!(b.center_in(&a), Point { x: 2.5, y: 2.5 });
 }
