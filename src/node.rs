@@ -3,7 +3,8 @@ use std::{collections::HashMap, mem};
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    CalculatorTrait, ContainsPoint, GetCenter, Point, PointBox, constants::DEFAULT_OPT_NAME,
+    CalculatorTrait, ContainsPoint, FullBox, GetCenter, Point, PointBox,
+    constants::DEFAULT_OPT_NAME,
 };
 
 #[wasm_bindgen]
@@ -117,6 +118,20 @@ impl NodeOpt {
     }
 }
 
+impl FullBox for Node {
+    fn full_box(&self) -> (Point, Point, Point, Point) {
+        let min_x = self.get_min_x();
+        let max_x = self.get_max_x();
+        let min_y = self.get_min_y();
+        let max_y = self.get_max_y();
+        return (
+            Point { x: min_x, y: min_y }, // nw
+            Point { x: max_x, y: min_y }, // ne
+            Point { x: min_x, y: max_y }, // sw
+            Point { x: max_x, y: max_y }, // se
+        );
+    }
+}
 #[wasm_bindgen]
 impl Node {
     pub fn get_min_r(&self) -> f64 {

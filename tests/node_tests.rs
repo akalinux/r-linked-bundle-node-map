@@ -1,6 +1,6 @@
 #![cfg(test)]
 use linked_bundle_node_map::{
-    CalculatorTrait, ContainsPoint, Point, PointBox,
+    CalculatorTrait, ContainsPoint, FullBox, Point, PointBox,
     node::{Node, NodeStates},
 };
 

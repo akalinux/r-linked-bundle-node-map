@@ -3,7 +3,7 @@ use std::{collections::HashMap, mem};
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    CalculatorTrait, GetCenter, Point, PointBox,
+    CalculatorTrait, FullBox, GetCenter, Point, PointBox,
     bsp::{IndexPart, IndexSet, Indexers},
     calc::{BacklogUpdates, Options},
     constants::{
@@ -447,6 +447,8 @@ pub struct Bundle {
     pub label: String,
 }
 
+impl CalculatorTrait for Bundle {}
+
 pub trait SrcDstIs {
     fn get_container_id(&self) -> u64 {
         return create_container_id(self.src(), self.dst());
@@ -506,7 +508,20 @@ pub struct ComputedLinks {
     pub animations: Vec<AnimatedLink>,
     pub bundles: Vec<Point>,
 }
-
+impl FullBox for ComputedLinks {
+    fn full_box(&self) -> (Point, Point, Point, Point) {
+        let min_x = self.min_x;
+        let max_x = self.max_x;
+        let min_y = self.min_y;
+        let max_y = self.max_y;
+        return (
+            Point { x: min_x, y: min_y }, // nw
+            Point { x: max_x, y: min_y }, // ne
+            Point { x: min_x, y: max_y }, // sw
+            Point { x: max_x, y: max_y }, // se
+        );
+    }
+}
 impl PointBox for ComputedLinks {
     fn get_min_x(&self) -> f64 {
         return self.min_x;
@@ -540,6 +555,37 @@ pub struct ComputedLink {
     pub dst: Point,
 }
 
+pub struct LinkBox {
+    ne: Point,
+    nw: Point,
+    se: Point,
+    sw: Point,
+}
+
+impl FullBox for LinkBox {
+    fn full_box(&self) -> (Point, Point, Point, Point) {
+        (self.ne, self.nw, self.se, self.sw)
+    }
+}
+
+impl CalculatorTrait for LinkBox {}
+
+impl LinkBox {
+    pub fn new(src: &Point, dst: &Point, width: f64) -> Self {
+        let r = width * 0.5;
+        let base_angle = src.get_angle(src.x, src.y, dst.x, dst.y);
+        let angle_north = base_angle + 90.0;
+        let angle_south = angle_north + 180.0;
+
+        // true outer points
+        let ne = src.get_xy(src.x, src.y, r, angle_north);
+        let nw = src.get_xy(dst.x, dst.y, r, angle_north);
+        let se = src.get_xy(src.x, src.y, r, angle_south);
+        let sw = src.get_xy(dst.x, dst.y, r, angle_south);
+        return Self { ne, nw, se, sw };
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Copy, Clone)]
 pub struct AnimatedLink {
@@ -557,7 +603,38 @@ pub(crate) fn create_container_id(src: u32, dst: u32) -> u64 {
     return id;
 }
 
+#[wasm_bindgen]
+pub enum LinkContainsType {
+    Bundle(Bundle),
+    Link(Link),
+}
+
 impl LinkContainer {
+    pub fn contains_point(&self, p: &Point) -> Option<LinkContainsType> {
+        let cu;
+        if let Some(c) = &self.link_src {
+            cu = c;
+        } else {
+            return None;
+        }
+        // first check the bundles
+        let cl = &cu.cl;
+        for i in 0..cl.bundles.len() {
+            let bp = &cl.bundles[i];
+            if self.inside_circle(p, bp, cu.r) {
+                return Some(LinkContainsType::Bundle(self.bundles[i].clone()));
+            }
+        }
+        for i in 0..cl.links.len() {
+            let pb = &cl.links[i];
+            let lb = LinkBox::new(&pb.src, &pb.dst, cl.width);
+            if self.inside_box(&lb, p) {
+                return Some(LinkContainsType::Link(self.links[i].clone()));
+            }
+        }
+
+        return None;
+    }
     pub fn get_min_r(&self, s: &Node, d: &Node) -> f64 {
         let a = s.get_min_r();
         let b = d.get_min_r();
@@ -611,28 +688,6 @@ impl LinkContainer {
             };
             self.link_src = Some(src);
         }
-    }
-
-    pub fn compute_line_box(&self, ne: &Point, points: [&Point; 3]) -> (f64, f64, f64, f64) {
-        let mut min_x = ne.x;
-        let mut max_x = ne.x;
-        let mut min_y = ne.y;
-        let mut max_y = ne.y;
-        for p in points {
-            if max_x < p.x {
-                max_x = p.x;
-            }
-            if max_y < p.y {
-                max_y = p.y;
-            }
-            if min_x > p.x {
-                min_x = p.x;
-            }
-            if min_y > p.y {
-                min_y = p.y;
-            }
-        }
-        return (min_x, max_x, min_y, max_y);
     }
 
     pub fn compute_link_segement(

@@ -280,6 +280,9 @@ pub trait GetCenter {
     fn get_center(&self) -> Point;
 }
 
+pub trait FullBox {
+    fn full_box(&self) -> (Point, Point, Point, Point);
+}
 pub trait PointBox {
     fn get_min_x(&self) -> f64;
     fn get_max_x(&self) -> f64;
@@ -309,27 +312,6 @@ pub trait PointBox {
             y: self.get_max_y(),
         };
     }
-    fn full_box(&self) -> (Point, Point, Point, Point) {
-        let min_x = self.get_min_x();
-        let max_x = self.get_max_x();
-        let min_y = self.get_min_y();
-        let max_y = self.get_max_y();
-        return (
-            Point { x: min_x, y: min_y }, // nw
-            Point { x: max_x, y: min_y }, // ne
-            Point { x: min_x, y: max_y }, // sw
-            Point { x: max_x, y: max_y }, // se
-        );
-    }
-
-    fn transform_full_box(&self, p: &Point) -> (Point, Point, Point, Point) {
-        let mut res = self.full_box();
-        res.0.move_to(p);
-        res.1.move_to(p);
-        res.2.move_to(p);
-        res.3.move_to(p);
-        return res;
-    }
 
     fn index_bound(&self, boundry: i64) -> IndexXY {
         let mut min_x = self.get_min_x().floor() as i64;
@@ -358,6 +340,27 @@ pub trait PointBox {
 }
 
 pub trait CalculatorTrait {
+    fn compute_line_box(&self, ne: &Point, points: [&Point; 3]) -> (f64, f64, f64, f64) {
+        let mut min_x = ne.x;
+        let mut max_x = ne.x;
+        let mut min_y = ne.y;
+        let mut max_y = ne.y;
+        for p in points {
+            if max_x < p.x {
+                max_x = p.x;
+            }
+            if max_y < p.y {
+                max_y = p.y;
+            }
+            if min_x > p.x {
+                min_x = p.x;
+            }
+            if min_y > p.y {
+                min_y = p.y;
+            }
+        }
+        return (min_x, max_x, min_y, max_y);
+    }
     fn get_angle(&self, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
         let dx = x1 - x2;
         let dy = y1 - y2;
@@ -393,7 +396,7 @@ pub trait CalculatorTrait {
         return r * scale;
     }
 
-    fn inside_circle(&self, p: &Point, c: Point, r: f64) -> bool {
+    fn inside_circle(&self, p: &Point, c: &Point, r: f64) -> bool {
         return (p.x - c.x).powi(2) + (p.y - c.y).powi(2) <= r.powi(2);
     }
 
@@ -401,7 +404,7 @@ pub trait CalculatorTrait {
         return (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)).abs() * 0.5;
     }
 
-    fn inside_box(&self, pbox: &impl PointBox, p: &Point) -> bool {
+    fn inside_box(&self, pbox: &impl FullBox, p: &Point) -> bool {
         let (nw, ne, sw, se) = pbox.full_box();
         let box_area = (self.triangle_area(ne.x, ne.y, nw.x, nw.y, se.x, se.y)
             + self.triangle_area(ne.x, ne.y, nw.x, nw.y, sw.x, sw.y))
