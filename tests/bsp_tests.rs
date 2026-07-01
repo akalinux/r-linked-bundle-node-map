@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use linked_bundle_node_map::{
-    PointBox, ScreenBox, Transform,
-    bsp::{IsIndexed, ScreenIndex},
+    Point, PointBox, ScreenBox, Transform,
+    bsp::{IsIndexed, MouseIndex, ScreenIndex},
     calc::Options,
     link::{Animation, Link, LinkContainer},
     node::{Node, NodeStates},
@@ -131,4 +131,38 @@ fn is_indexed_tests() {
     assert!(!idx.is_mouse(0));
     assert!(!idx.is_screen(0));
     assert!(idx.is_empty());
+}
+
+#[test]
+fn mouse_index_tests() {
+    let mut m = MouseIndex::new(5, 2);
+    assert_eq!(m.in_point(&Point { x: 0.0, y: 0.0 }), vec![]);
+    let mut src = Node {
+        x: 2.5,
+        y: 2.5,
+        w: 5.0,
+        h: 5.0,
+        id: 11,
+        label: String::from("shoe on head"),
+        opt: 0,
+        groups: Vec::new(),
+    };
+    m.update(src.id, (None, Some(src.index_bound(m.step))));
+    assert_eq!(m.in_point(&Point { x: 0.0, y: 0.0 }), vec![11]);
+    assert_eq!(m.in_point(&Point { x: -1.0, y: 0.0 }), vec![]);
+    m.update(src.id, (Some(src.index_bound(m.step)), None));
+    assert_eq!(m.in_point(&Point { x: 0.0, y: 0.0 }), vec![]);
+    src.x = 0.0;
+    src.y = 0.0;
+    m.update(src.id, (None, Some(src.index_bound(m.step))));
+    // should now be in 4 points
+    for p in [
+        Point { x: -1.0, y: 0.0 },
+        Point { x: 1.0, y: 0.0 },
+        Point { x: 0.0, y: -1.0 },
+        Point { x: 0.0, y: 1.0 },
+    ] {
+        assert_eq!(m.in_point(&p), vec![11]);
+    }
+    assert_eq!(m.in_point(&Point { x: 6.0, y: 0.0 }), vec![]);
 }

@@ -134,9 +134,6 @@ impl Calculator {
             options: Options::new(),
         };
     }
-    pub fn get_node_changes(&self) -> Vec<Node> {
-        return self.nodes.get_node_changes();
-    }
 
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
@@ -204,6 +201,7 @@ impl Calculator {
             .link_add(link, &self.nodes, &mut self.options, &mut self.animations);
         self.indexer.add_link(self.links.get_mut(&id).unwrap());
     }
+
     pub fn group_add(&mut self, id: u32, nodes: &[u32]) -> Option<Vec<u32>> {
         return self.nodes.group_add(id, nodes);
     }
@@ -224,16 +222,20 @@ impl Calculator {
         let idx = &mut self.indexer;
         let mut ns = Vec::with_capacity(node_ids.len() * 2);
         let backlog = &mut self.backlog;
-        let nodes = &mut self.nodes;
+        let mut iter = self.nodes.get_related(node_ids);
 
-        for src in nodes.get_related(node_ids) {
+        loop {
+            let src;
+            match iter.next() {
+                Some(n) => src = n,
+                _ => break,
+            }
             ns.push(src.id);
             let node = src.transform(p.x, p.y, 0.0, 0.0);
             idx.clear_node(&node);
             idx.index_screen_node(&node);
-            if !backlog.nodes.contains_key(&node.id) {
-                backlog.nodes.insert(node.id, ());
-            }
+            backlog.nodes.insert(node.id, ());
+            iter.nodes.update(node);
         }
 
         let mut ls = HashMap::new();
@@ -256,9 +258,7 @@ impl Calculator {
                 ls.insert(lid, ());
                 idx.clear_mouse_link(link);
                 idx.index_screen_link(link);
-                if !backlog.links.contains_key(&lid) {
-                    backlog.links.insert(lid, ());
-                }
+                backlog.links.insert(lid, ());
             }
         }
     }

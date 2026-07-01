@@ -243,7 +243,7 @@ pub struct Point {
 }
 
 impl Point {
-    pub fn transform(&mut self, p: &Point) {
+    pub fn move_to(&mut self, p: &Point) {
         self.x += p.x;
         self.y += p.y;
     }
@@ -253,6 +253,19 @@ impl Point {
             x: (self.x + p.x) * 0.5,
             y: (self.y + p.y) * 0.5,
         };
+    }
+    pub fn to_index_point(&self, step: i64) -> (i64, i64) {
+        let mut x = self.x.floor() as i64;
+        let mut y = self.y.floor() as i64;
+        for i in [&mut x, &mut y] {
+            let m = *i % step;
+            if m < 0 {
+                *i -= step + m;
+            } else {
+                *i -= m;
+            }
+        }
+        return (x, y);
     }
 }
 impl CalculatorTrait for Point {}
@@ -311,10 +324,10 @@ pub trait PointBox {
 
     fn transform_full_box(&self, p: &Point) -> (Point, Point, Point, Point) {
         let mut res = self.full_box();
-        res.0.transform(p);
-        res.1.transform(p);
-        res.2.transform(p);
-        res.3.transform(p);
+        res.0.move_to(p);
+        res.1.move_to(p);
+        res.2.move_to(p);
+        res.3.move_to(p);
         return res;
     }
 

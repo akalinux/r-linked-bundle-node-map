@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 
 use wasm_bindgen::prelude::*;
 
@@ -28,13 +28,13 @@ pub struct Node {
 }
 
 pub struct GetRelatedNodes<'n> {
-    nodes: &'n NodeStates,
-    known_nodes: HashMap<u32, ()>,
-    known_groups: HashMap<u32, ()>,
-    todo: Vec<u32>,
+    pub nodes: &'n mut NodeStates,
+    pub known_nodes: HashMap<u32, ()>,
+    pub known_groups: HashMap<u32, ()>,
+    pub todo: Vec<u32>,
 }
 impl<'n> GetRelatedNodes<'n> {
-    pub fn new(init: &[u32], nodes: &'n NodeStates) -> Self {
+    pub fn new(init: &[u32], nodes: &'n mut NodeStates) -> Self {
         let mut known_nodes = HashMap::with_capacity(init.len() * 2);
         let known_groups = HashMap::with_capacity(init.len() * 2);
         let mut todo = Vec::with_capacity(init.len() * 4);
@@ -66,7 +66,7 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
         let next = todo.pop().unwrap();
         let known_nodes = &mut self.known_nodes;
         let known_groups = &mut self.known_groups;
-        let nodes = self.nodes;
+        let nodes = &self.nodes;
         let groups = &self.nodes.get(next).unwrap().groups;
         todo.reserve(groups.len());
         known_nodes.reserve(groups.len());
@@ -90,7 +90,7 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
                 todo.push(*node_id);
             }
         }
-        return Some(nodes.get(next).unwrap());
+        return Some(unsafe { mem::transmute(nodes.get(next).unwrap()) });
     }
 }
 
@@ -203,7 +203,7 @@ pub struct NodeStates {
 }
 
 impl NodeStates {
-    pub fn get_related<'n>(&'n self, node_ids: &[u32]) -> GetRelatedNodes<'n> {
+    pub fn get_related<'n>(&'n mut self, node_ids: &[u32]) -> GetRelatedNodes<'n> {
         return GetRelatedNodes::new(node_ids, self);
     }
 

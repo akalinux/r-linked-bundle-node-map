@@ -206,3 +206,9 @@ fn screen_center() {
     assert_eq!(c.center(&c), Point { x: 5.0, y: 5.0 });
     assert_eq!(b.center(&c), Point { x: 10.0, y: 10.0 });
 }
+
+#[test]
+fn point_to_index_tests() {
+    assert_eq!(Point { x: 0.0, y: 0.0 }.to_index_point(5), (0, 0));
+    assert_eq!(Point { x: 3.0, y: -1.0 }.to_index_point(5), (0, -5));
+}

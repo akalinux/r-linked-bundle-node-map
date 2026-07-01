@@ -1,4 +1,6 @@
-use crate::{CalculatorTrait, PointBox, ScreenBox, Transform, link::LinkContainer, node::Node};
+use crate::{
+    CalculatorTrait, Point, PointBox, ScreenBox, Transform, link::LinkContainer, node::Node,
+};
 use std::{
     collections::{BTreeMap, HashMap},
     hash::Hash,
@@ -503,6 +505,21 @@ impl<T: Eq + PartialEq + Hash + Copy + Clone + Ord> MouseIndex<T> {
             step,
             idx_x: HashMap::with_capacity(size),
         };
+    }
+
+    pub fn in_point(&self, p: &Point) -> Vec<T> {
+        let (x, y) = p.to_index_point(self.step);
+        if let Some(idx_y) = self.idx_x.get(&x)
+            && let Some(l) = idx_y.get(&y)
+        {
+            let mut res = Vec::with_capacity(l.len());
+            for i in l.keys() {
+                res.push(*i);
+            }
+            return res;
+        }
+
+        return Vec::new();
     }
 
     pub fn reserve(&mut self, size: usize) {
