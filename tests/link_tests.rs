@@ -1,8 +1,12 @@
 #![cfg(test)]
 
+use std::collections::HashMap;
+
 use linked_bundle_node_map::{
     CalculatorTrait, GetCenter, Point,
-    link::{Animation, Link, LinkContainer, LinkContainerOpt},
+    calc::Options,
+    link::{Animation, Bundle, Link, LinkContainer, LinkContainerOpt, LinkContainsType},
+    node::{Node, NodeStates},
 };
 
 use approx::assert_relative_eq;
@@ -240,4 +244,53 @@ fn animation_tests() {
     assert_relative_eq!(cu.animations[0].src.y, offset * -1.0, epsilon = 0.02);
     assert_relative_eq!(cu.animations[1].dst.y, offset, epsilon = 0.02);
     assert_relative_eq!(cu.animations[1].src.y, offset, epsilon = 0.02);
+}
+
+#[test]
+fn point_inside_tests() {
+    let mut ns = NodeStates::new(2);
+    let src = Node {
+        x: 1.0,
+        y: 1.0,
+        w: 1.0,
+        h: 1.0,
+        id: 0,
+        opt: 0,
+        label: String::from("test"),
+        groups: Vec::new(),
+    };
+    let dst = Node {
+        x: 9.0,
+        y: 9.0,
+        w: 1.0,
+        h: 1.0,
+        id: 1,
+        opt: 0,
+        label: String::from("test"),
+        groups: Vec::new(),
+    };
+    ns.insert(src.clone());
+    ns.insert(dst.clone());
+    let mut ops = Options::new();
+    let mut animations = HashMap::new();
+    let mut lc = LinkContainer::new(src.id, dst.id);
+    let link = Link::new(0, 0, 1, 0, Animation::None, String::from("This is a test"));
+    lc.add_link(link.clone());
+    let bundle = Bundle::new(0, 0, 1, 0, Vec::new(), String::from("value"));
+    lc.add_bundle(bundle.clone());
+    lc.update(&mut ns, &mut ops, &mut animations);
+
+    assert!(lc.contains_point(&Point { x: 1.0, y: 9.0 }).is_none());
+    assert_eq!(
+        lc.contains_point(&Point { x: 5.0, y: 5.0 }),
+        Some(LinkContainsType::Bundle(bundle.clone()))
+    );
+    assert_eq!(
+        lc.contains_point(&Point { x: 2.5, y: 2.5 }),
+        Some(LinkContainsType::Link(link.clone()))
+    );
+    assert_eq!(
+        lc.contains_point(&Point { x: 7.5, y: 7.5 }),
+        Some(LinkContainsType::Link(link.clone()))
+    );
 }

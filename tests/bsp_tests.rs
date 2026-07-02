@@ -136,7 +136,7 @@ fn is_indexed_tests() {
 #[test]
 fn mouse_index_tests() {
     let mut m = MouseIndex::new(5, 2);
-    assert_eq!(m.in_point(&Point { x: 0.0, y: 0.0 }), vec![]);
+    assert!(m.in_point(&Point { x: 0.0, y: 0.0 }).is_none());
     let mut src = Node {
         x: 2.5,
         y: 2.5,
@@ -148,10 +148,16 @@ fn mouse_index_tests() {
         groups: Vec::new(),
     };
     m.update(src.id, (None, Some(src.index_bound(m.step))));
-    assert_eq!(m.in_point(&Point { x: 0.0, y: 0.0 }), vec![11]);
-    assert_eq!(m.in_point(&Point { x: -1.0, y: 0.0 }), vec![]);
+    assert_eq!(
+        m.in_point(&Point { x: 0.0, y: 0.0 })
+            .unwrap()
+            .map(|x| *x)
+            .collect::<Vec<u32>>(),
+        vec![11]
+    );
+    assert!(m.in_point(&Point { x: -1.0, y: 0.0 }).is_none());
     m.update(src.id, (Some(src.index_bound(m.step)), None));
-    assert_eq!(m.in_point(&Point { x: 0.0, y: 0.0 }), vec![]);
+    assert!(m.in_point(&Point { x: 0.0, y: 0.0 }).is_none());
     src.x = 0.0;
     src.y = 0.0;
     m.update(src.id, (None, Some(src.index_bound(m.step))));
@@ -162,7 +168,10 @@ fn mouse_index_tests() {
         Point { x: 0.0, y: -1.0 },
         Point { x: 0.0, y: 1.0 },
     ] {
-        assert_eq!(m.in_point(&p), vec![11]);
+        assert_eq!(
+            m.in_point(&p).unwrap().map(|x| *x).collect::<Vec<u32>>(),
+            vec![11]
+        );
     }
-    assert_eq!(m.in_point(&Point { x: 6.0, y: 0.0 }), vec![]);
+    assert!(m.in_point(&Point { x: 6.0, y: 0.0 }).is_none());
 }

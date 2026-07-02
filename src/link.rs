@@ -351,7 +351,7 @@ impl LinkStates {
 }
 
 #[wasm_bindgen]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Animation {
     Both,  // Animate in both directions
     ToSrc, // Animate towards the src node
@@ -361,7 +361,7 @@ pub enum Animation {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Link {
     pub id: u32,
     pub src: u32,
@@ -370,6 +370,22 @@ pub struct Link {
     pub animation: Animation,
     pub label: String,
 }
+
+#[wasm_bindgen]
+impl Link {
+    #[wasm_bindgen(constructor)]
+    pub fn new(id: u32, src: u32, dst: u32, opt: u32, animation: Animation, label: String) -> Self {
+        Self {
+            id,
+            src,
+            dst,
+            opt,
+            animation,
+            label,
+        }
+    }
+}
+
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
 #[derive(Clone)]
@@ -437,7 +453,7 @@ impl BunldeOpt {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Bundle {
     pub id: u32,
     pub src: u32,
@@ -445,6 +461,21 @@ pub struct Bundle {
     pub opt: u32,
     pub links: Vec<u32>,
     pub label: String,
+}
+
+#[wasm_bindgen]
+impl Bundle {
+    #[wasm_bindgen(constructor)]
+    pub fn new(id: u32, src: u32, dst: u32, opt: u32, links: Vec<u32>, label: String) -> Self {
+        Self {
+            id,
+            src,
+            dst,
+            label,
+            links,
+            opt,
+        }
+    }
 }
 
 impl CalculatorTrait for Bundle {}
@@ -555,6 +586,7 @@ pub struct ComputedLink {
     pub dst: Point,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct LinkBox {
     ne: Point,
     nw: Point,
@@ -587,7 +619,7 @@ impl LinkBox {
 }
 
 #[wasm_bindgen]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct AnimatedLink {
     pub src: Point,
     pub dst: Point,
@@ -604,6 +636,7 @@ pub(crate) fn create_container_id(src: u32, dst: u32) -> u64 {
 }
 
 #[wasm_bindgen]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LinkContainsType {
     Bundle(Bundle),
     Link(Link),

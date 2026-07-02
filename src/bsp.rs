@@ -2,7 +2,7 @@ use crate::{
     CalculatorTrait, Point, PointBox, ScreenBox, Transform, link::LinkContainer, node::Node,
 };
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, btree_map::Keys},
     hash::Hash,
     mem,
     ops::RangeInclusive,
@@ -390,13 +390,19 @@ impl<T: Eq + PartialEq + Hash + Copy + Clone + Ord> IsIndexed<T> {
 
 impl Indexers {
     pub fn new(node_mouse_b: i64, link_mouse_b: i64, screen_mouse_b: i64, size: usize) -> Self {
-        return Self {
+        Self {
             link_mouse_idx: MouseIndex::new(link_mouse_b, size),
             node_mouse_idx: MouseIndex::new(node_mouse_b, size),
             screen_index: ScreenIndex::new(screen_mouse_b),
             node_check: IsIndexed::new(size),
             link_check: IsIndexed::new(size),
-        };
+        }
+    }
+    pub fn in_point(&self, p: &Point) -> (Option<Keys<'_, u32, ()>>, Option<Keys<'_, u64, ()>>) {
+        (
+            self.node_mouse_idx.in_point(p),
+            self.link_mouse_idx.in_point(p),
+        )
     }
 
     pub fn reserve(&mut self, size: usize) {
@@ -507,19 +513,15 @@ impl<T: Eq + PartialEq + Hash + Copy + Clone + Ord> MouseIndex<T> {
         };
     }
 
-    pub fn in_point(&self, p: &Point) -> Vec<T> {
+    pub fn in_point<'i>(&self, p: &Point) -> Option<Keys<'_, T, ()>> {
         let (x, y) = p.to_index_point(self.step);
         if let Some(idx_y) = self.idx_x.get(&x)
             && let Some(l) = idx_y.get(&y)
         {
-            let mut res = Vec::with_capacity(l.len());
-            for i in l.keys() {
-                res.push(*i);
-            }
-            return res;
+            return Some(l.keys());
         }
 
-        return Vec::new();
+        None
     }
 
     pub fn reserve(&mut self, size: usize) {
