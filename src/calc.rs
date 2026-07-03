@@ -68,6 +68,19 @@ pub struct Options {
     pub node: HashMap<u32, NodeOpt>,
     pub lc: HashMap<u32, LinkContainerOpt>,
 }
+
+#[wasm_bindgen(inspectable)]
+#[wasm_bindgen(getter_with_clone)]
+#[derive(Clone, Debug)]
+pub struct BulkLoad {
+    pub link_opts: Vec<LinkOpt>,
+    pub bundle_ops: Vec<BunldeOpt>,
+    pub node_ops: Vec<NodeOpt>,
+    pub lc_ops: Vec<LinkContainerOpt>,
+    pub nodes: Vec<Node>,
+    pub links: Vec<Link>,
+    pub bundles: Vec<Bundle>,
+}
 impl Options {
     pub fn new() -> Self {
         return Self {
@@ -237,6 +250,8 @@ impl Calculator {
         let mut ns = Vec::with_capacity(node_ids.len() * 2);
         let mut iter = self.nodes.get_related(node_ids);
 
+        let mut ls = HashMap::new();
+        let nl = &self.links.node_links;
         loop {
             let src;
             match iter.next() {
@@ -249,32 +264,30 @@ impl Calculator {
                 ScreenSlot::Node(src.id),
                 (
                     Some(src.index_bound(idx.step)),
-                    Some(src.index_bound(idx.step)),
+                    Some(node.index_bound(idx.step)),
                 ),
             );
             iter.nodes.update(node);
-        }
-
-        let mut ls = HashMap::new();
-        for id in ns {
-            let mut links: Vec<u64>;
-            match self.links.node_links.get(&id) {
+            match nl.get(&src.id) {
                 Some(l) => {
-                    links = Vec::with_capacity(l.len());
+                    ls.reserve(l.len());
                     for i in l.keys() {
-                        links.push(*i);
+                        if !ls.contains_key(i) {
+                            ls.insert(*i, ());
+                        }
                     }
                 }
-                None => continue,
+                _ => (),
             }
-            for lid in links {
-                if ls.contains_key(&lid) {
-                    continue;
-                }
-                let link = self.links.get_mut(&lid).unwrap();
-                ls.insert(lid, ());
-                idx.index(ScreenSlot::Link(lid), link.screen_index(idx.step, true));
-            }
+        }
+
+        let nodes = &self.nodes;
+        let options = &mut self.options;
+        let animations = &mut self.animations;
+        for lid in ls.keys() {
+            let link = self.links.get_mut(&lid).unwrap();
+            link.update(nodes, options, animations);
+            idx.index(ScreenSlot::Link(*lid), link.screen_index(idx.step, true));
         }
     }
 }

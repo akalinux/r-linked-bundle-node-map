@@ -41,7 +41,7 @@ fn compute_link_tests() {
         animation: Animation::None,
         label: String::from("test link 1"),
     });
-    let mut cu = lc.compute_link_segement(
+    let mut cu = lc.compute_link_segement_line(
         &Point { x: 0.0, y: 0.0 },
         &Point { x: 10.0, y: 0.0 },
         2.0,
@@ -68,7 +68,7 @@ fn compute_link_tests() {
     });
 
     assert_eq!(lc.links.len(), 2);
-    cu = lc.compute_link_segement(
+    cu = lc.compute_link_segement_line(
         &Point { x: 0.0, y: 0.0 },
         &Point { x: 10.0, y: 0.0 },
         2.0,
@@ -95,7 +95,7 @@ fn compute_link_tests() {
         animation: Animation::None,
         label: String::from("test link 1"),
     });
-    cu = lc.compute_link_segement(
+    cu = lc.compute_link_segement_line(
         &Point { x: 0.0, y: 0.0 },
         &Point { x: 10.0, y: 0.0 },
         2.0,
@@ -203,7 +203,7 @@ fn animation_tests() {
 
     let src = Point { x: 0.0, y: 0.0 };
     let dst = Point { x: 10.0, y: 0.0 };
-    let mut cu = lc.compute_link_segement(&src, &dst, 2.0, 0, &lc_opt);
+    let mut cu = lc.compute_link_segement_line(&src, &dst, 2.0, 0, &lc_opt);
 
     assert_eq!(cu.animations.len(), 1);
     assert_relative_eq!(cu.animations[0].src.x, dst.x - 2.0);
@@ -220,7 +220,7 @@ fn animation_tests() {
         label: String::from("test link 1"),
     });
 
-    cu = lc.compute_link_segement(&src, &dst, 2.0, 0, &lc_opt);
+    cu = lc.compute_link_segement_line(&src, &dst, 2.0, 0, &lc_opt);
     assert_relative_eq!(cu.animations[0].src.x, src.x + 2.0);
     assert_relative_eq!(cu.animations[0].src.y, src.y, epsilon = 0.01);
     assert_relative_eq!(cu.animations[0].dst.x, dst.x - 2.0);
@@ -234,7 +234,7 @@ fn animation_tests() {
         animation: Animation::Both,
         label: String::from("test link 1"),
     });
-    cu = lc.compute_link_segement(&src, &dst, 2.0, 0, &lc_opt);
+    cu = lc.compute_link_segement_line(&src, &dst, 2.0, 0, &lc_opt);
     assert_relative_eq!(cu.animations[0].width, cu.width * 0.3, epsilon = 0.09);
     assert_relative_eq!(cu.animations[1].width, cu.width * 0.3, epsilon = 0.09);
     assert_relative_eq!(cu.animations[0].src.x, src.x + 2.0);

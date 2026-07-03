@@ -59,13 +59,23 @@ impl LinkStates {
         animations: &mut HashMap<u64, ()>,
         idx: &mut ScreenIndex,
     ) {
+        self.bulk = false;
         for lid in updates {
+            let mut remove = false;
             match self.get_mut(lid) {
                 Some(lc) => {
-                    lc.update(nodes, ops, animations);
-                    idx.index(ScreenSlot::Link(*lid), lc.screen_index(idx.step, true));
+                    if lc.is_empty() {
+                        remove = true;
+                        idx.index(ScreenSlot::Link(*lid), lc.screen_index(idx.step, false));
+                    } else {
+                        lc.update(nodes, ops, animations);
+                        idx.index(ScreenSlot::Link(*lid), lc.screen_index(idx.step, true));
+                    }
                 }
-                _ => {}
+                _ => (),
+            }
+            if remove {
+                self.manage(*lid, false, &mut None);
             }
         }
     }
@@ -280,9 +290,6 @@ impl LinkStates {
             {
                 let link = self.links.get_mut(&lid).unwrap();
                 link.remove_link(id);
-                if !bulk {
-                    link.update(nodes, ops, animations);
-                }
 
                 (src, dst) = link.get_node_ids();
             }
@@ -295,12 +302,43 @@ impl LinkStates {
                 if let Some(lc) = rm {
                     idx.index(ScreenSlot::Link(lc.id), (lc.screen_index.clone(), None));
                 } else if let Some(lc) = self.links.get_mut(lid) {
+                    lc.update(nodes, ops, animations);
                     idx.index(ScreenSlot::Link(lc.id), lc.screen_index(idx.step, true));
                 }
             }
             self.manage_cross_link(false, id, src, dst, true);
         }
     }
+
+    pub fn drop_link(&mut self, id: u64, idx: &mut ScreenIndex) {
+        let mut link;
+        if let Some(l) = self.updates.remove(&id) {
+            link = l;
+            self.links.remove(&id);
+        } else if let Some(l) = self.links.remove(&id) {
+            link = l;
+        } else {
+            return;
+        }
+        idx.index(ScreenSlot::Link(id), link.screen_index(idx.step, false));
+        // need to clean up all relations as well.
+
+        for b in link.bundles.iter() {
+            let l = self.bundle_links.get_mut(&b.id).unwrap();
+            l.remove(&id);
+            if l.is_empty() {
+                self.bundle_links.remove(&b.id);
+            }
+        }
+        for l in link.links.iter() {
+            let ls = self.link_links.get_mut(&l.id).unwrap();
+            ls.remove(&id);
+            if ls.is_empty() {
+                self.link_links.remove(&l.id);
+            }
+        }
+    }
+
     pub fn bundle_add<'l>(
         &'l mut self,
         bunlde: Bundle,
@@ -347,9 +385,6 @@ impl LinkStates {
             {
                 let link = self.links.get_mut(&lid).unwrap();
                 link.remove_bundle(id);
-                if !bulk {
-                    link.update(nodes, ops, animations);
-                }
 
                 (src, dst) = link.get_node_ids();
             }
@@ -361,6 +396,7 @@ impl LinkStates {
                 if let Some(lc) = rm {
                     idx.index(ScreenSlot::Link(*lid), (lc.screen_index.clone(), None));
                 } else if let Some(lc) = self.get_mut(lid) {
+                    lc.update(nodes, ops, animations);
                     idx.index(ScreenSlot::Link(lc.id), lc.screen_index(idx.step, true));
                 }
             }
@@ -408,7 +444,7 @@ impl Link {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LinkContainerOpt {
     pub id: u32,
     pub label: String,
@@ -429,7 +465,7 @@ impl LinkContainerOpt {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LinkOpt {
     pub id: u32,
     pub label: String,
@@ -452,7 +488,7 @@ impl LinkOpt {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BunldeOpt {
     pub id: u32,
     pub label: String,
@@ -727,7 +763,7 @@ impl LinkContainer {
         let lc_opt = ops.get_lc(&self.opt);
         if !self.is_empty() {
             // this code is temporary.. will need to upgrade it in order to support arches and elbows.
-            let mut cu = self.compute_link_segement(&s, &d, r, src_id, &lc_opt);
+            let mut cu = self.compute_link_segement_line(&s, &d, r, src_id, &lc_opt);
             if !cu.animations.is_empty() {
                 animations.insert(self.id, ());
             }
@@ -742,7 +778,7 @@ impl LinkContainer {
         }
     }
 
-    pub fn compute_link_segement(
+    pub fn compute_link_segement_line(
         &self,
         src: &Point,
         dst: &Point,
@@ -922,13 +958,12 @@ impl LinkContainer {
     pub fn build_index_bounds(&self, boundry: i64, needs_new: bool) -> IndexPart {
         match needs_new {
             true => match &self.link_src {
-                None => return None,
-                Some(cu) => {
-                    return Some(cu.cl.index_bound(boundry));
-                }
+                Some(cu) => return Some(cu.cl.index_bound(boundry)),
+                _ => (),
             },
-            false => return None,
+            _ => (),
         }
+        None
     }
 
     pub fn screen_index(&mut self, boundry: i64, needs_new: bool) -> IndexSet {

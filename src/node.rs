@@ -8,7 +8,7 @@ use crate::{
 };
 
 #[wasm_bindgen]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum LabelPosition {
     Top,
     Center,
@@ -16,7 +16,7 @@ pub enum LabelPosition {
 }
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Node {
     pub x: f64,
     pub y: f64,
@@ -97,7 +97,7 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NodeOpt {
     pub id: u32,
     pub label: String,

@@ -19,9 +19,15 @@ RUN COREPACK_ENABLE_DOWNLOAD_PROMPT=0 yarn set version stable
 RUN rustup default stable 
 RUN rustup update
 RUN cargo install --locked cargo-vet
-USER root
 RUN curl https://wasm-bindgen.github.io/wasm-pack/installer/init.sh -sSf | sh
+RUN cargo install wasm-pack
+RUN rustup target add wasm32-unknown-unknown
+RUN cargo install wasm-bindgen-cli
+#RUN cargo add wasm-bindgen-test
+RUN curl https://wasmtime.dev/install.sh -sSf | bash
+#USER root
+
 #RUN rustup docs --book 
  
-ENV PATH=/usr/local/go/bin:$PATH
+ENV PATH=~/.cargo/bin:/usr/local/go/bin:$PATH
 CMD ["/bin/bash"]
