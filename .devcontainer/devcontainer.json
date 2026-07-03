@@ -4,34 +4,34 @@
 	"name": "Node.js & TypeScript",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	//"image": "mcr.microsoft.com/devcontainers/typescript-node:4-24-trixie",
-    //"image": "mcr.microsoft.com/devcontainers/typescript-node",
-
-
-    "build": {
-        // Path is relative to the devcontainer.json file.
-        "dockerfile": "Dockerfile"
-    },
-
+	//"image": "mcr.microsoft.com/devcontainers/typescript-node",
+	"build": {
+		// Path is relative to the devcontainer.json file.
+		"dockerfile": "Dockerfile"
+	},
 	//"image": "mcr.microsoft.com/devcontainers/typescript-node:4-${templateOption:imageVariant}",
 	"features": {
 		//"ghcr.io/devcontainer-config/features/dot-config:4": {}
 	},
-
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
-
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
-	"forwardPorts": [5000],
-
+	"forwardPorts": [
+		5000
+	],
 	// Use 'postCreateCommand' to run commands after the container is created.
 	"postCreateCommand": "if [ -e /host-home-folder/vscode_common/vscode.bash ];then /bin/bash /host-home-folder/vscode_common/vscode.bash;fi",
-
 	// Configure tool-specific properties.
-	// "customizations": {},
-
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"rust-lang.rust-analyzer"
+			]
+		}
+	},
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	// "remoteUser": "root"
 	"mounts": [
-    	"source=${localEnv:HOME}${localEnv:USERPROFILE},target=/host-home-folder,type=bind,consistency=cached"
+		"source=${localEnv:HOME}${localEnv:USERPROFILE},target=/host-home-folder,type=bind,consistency=cached"
 	]
 }
