@@ -1,8 +1,8 @@
 use crate::{
-    CalculatorTrait, Point,
-    bsp::Indexers,
+    CalculatorTrait, Point, PointBox,
+    bsp::{ScreenIndex, ScreenSlot},
     constants::DEFAULT_NODE_R,
-    link::{Bundle, BunldeOpt, Link, LinkContainerOpt, LinkOpt, LinkStates, SrcDstIs},
+    link::{Bundle, BunldeOpt, Link, LinkContainerOpt, LinkOpt, LinkStates},
     node::{Node, NodeOpt, NodeStates},
 };
 use pastey::paste;
@@ -90,7 +90,7 @@ pub struct Calculator {
     backlog: BacklogUpdates,
     animations: HashMap<u64, ()>,
     options: Options,
-    indexer: Indexers,
+    indexer: ScreenIndex,
 }
 
 macro_rules! calc_acl {
@@ -113,24 +113,19 @@ calc_acl!(nodes, NodeStates);
 calc_acl!(backlog, BacklogUpdates);
 calc_acl!(animations, HashMap<u64,()>);
 calc_acl!(options, Options);
-calc_acl!(indexer, Indexers);
+calc_acl!(indexer, ScreenIndex);
 
 impl CalculatorTrait for Calculator {}
 
 #[wasm_bindgen]
 impl Calculator {
-    pub fn new_with_settings(
-        node_mouse_b: i64,
-        link_mouse_b: i64,
-        screen_mouse_b: i64,
-        size: usize,
-    ) -> Self {
+    pub fn new_with_settings(screen_mouse_b: i64, size: usize) -> Self {
         return Self {
             links: LinkStates::new(),
             animations: HashMap::with_capacity(size),
             nodes: NodeStates::new(size),
             backlog: BacklogUpdates::new(size),
-            indexer: Indexers::new(node_mouse_b, link_mouse_b, screen_mouse_b, size),
+            indexer: ScreenIndex::new(screen_mouse_b),
             options: Options::new(),
         };
     }
@@ -140,15 +135,20 @@ impl Calculator {
         let mouse_b = (DEFAULT_NODE_R as i64) * 4;
         let link_b = mouse_b * 4;
         let screen_b: i64 = link_b * 4;
-        return Self::new_with_settings(mouse_b, link_b, screen_b, 256);
+        return Self::new_with_settings(screen_b, 256);
     }
 
     pub fn node_add(&mut self, node: Node) -> Option<Node> {
-        if let Some(node) = self.nodes.get(node.id) {
-            self.indexer.clear_node(node);
-        }
+        let old;
+        match self.nodes.get(node.id) {
+            Some(node) => old = Some(node.index_bound(self.indexer.step)),
+            None => old = None,
+        };
 
-        self.indexer.add_node(&node);
+        self.indexer.index(
+            ScreenSlot::Node(node.id),
+            (old, Some(node.index_bound(self.indexer.step))),
+        );
         let node_id = node.id;
         let res = self.nodes.insert(node);
         self.links.update_links(
@@ -165,7 +165,10 @@ impl Calculator {
     pub fn node_remove(&mut self, id: u32) {
         let res = self.nodes.remove(id);
         if let Some(node) = &res {
-            self.indexer.clear_node(node);
+            self.indexer.index(
+                ScreenSlot::Node(id),
+                (Some(node.index_bound(self.indexer.step)), None),
+            );
             self.links.update_links(
                 id,
                 &mut self.indexer,
@@ -178,28 +181,36 @@ impl Calculator {
     }
 
     pub fn link_remove(&mut self, id: u32) {
-        for mut link in
-            self.links
-                .link_remove(id, &self.nodes, &mut self.options, &mut self.animations)
-        {
-            self.indexer.clear_link(&mut link);
-        }
+        self.links.link_remove(
+            id,
+            &self.nodes,
+            &mut self.options,
+            &mut self.animations,
+            &mut self.indexer,
+            &mut self.backlog,
+        )
     }
 
     pub fn bundle_remove(&mut self, id: u32) {
-        for mut link in
-            self.links
-                .bundle_remove(id, &self.nodes, &mut self.options, &mut self.animations)
-        {
-            self.indexer.clear_link(&mut link);
-        }
+        self.links.bundle_remove(
+            id,
+            &self.nodes,
+            &mut self.options,
+            &mut self.animations,
+            &mut self.indexer,
+            &mut self.backlog,
+        )
     }
 
     pub fn link_add(&mut self, link: Link) {
-        let id = link.get_container_id();
-        self.links
-            .link_add(link, &self.nodes, &mut self.options, &mut self.animations);
-        self.indexer.add_link(self.links.get_mut(&id).unwrap());
+        self.links.link_add(
+            link,
+            &self.nodes,
+            &mut self.options,
+            &mut self.animations,
+            &mut self.indexer,
+            &mut self.backlog,
+        );
     }
 
     pub fn group_add(&mut self, id: u32, nodes: &[u32]) -> Option<Vec<u32>> {
@@ -211,17 +222,19 @@ impl Calculator {
     }
 
     pub fn bundle_add(&mut self, bundle: Bundle) {
-        let id = bundle.get_container_id();
-        self.links
-            .bundle_add(bundle, &self.nodes, &mut self.options, &mut self.animations);
-
-        self.indexer.add_link(self.links.get_mut(&id).unwrap());
+        self.links.bundle_add(
+            bundle,
+            &self.nodes,
+            &mut self.options,
+            &mut self.animations,
+            &mut self.indexer,
+            &mut self.backlog,
+        );
     }
 
     pub fn move_nodes(&mut self, node_ids: &[u32], p: &Point) {
         let idx = &mut self.indexer;
         let mut ns = Vec::with_capacity(node_ids.len() * 2);
-        let backlog = &mut self.backlog;
         let mut iter = self.nodes.get_related(node_ids);
 
         loop {
@@ -232,9 +245,13 @@ impl Calculator {
             }
             ns.push(src.id);
             let node = src.transform(p.x, p.y, 0.0, 0.0);
-            idx.clear_node(&node);
-            idx.index_screen_node(&node);
-            backlog.nodes.insert(node.id, ());
+            idx.index(
+                ScreenSlot::Node(src.id),
+                (
+                    Some(src.index_bound(idx.step)),
+                    Some(src.index_bound(idx.step)),
+                ),
+            );
             iter.nodes.update(node);
         }
 
@@ -256,9 +273,7 @@ impl Calculator {
                 }
                 let link = self.links.get_mut(&lid).unwrap();
                 ls.insert(lid, ());
-                idx.clear_mouse_link(link);
-                idx.index_screen_link(link);
-                backlog.links.insert(lid, ());
+                idx.index(ScreenSlot::Link(lid), link.screen_index(idx.step, true));
             }
         }
     }

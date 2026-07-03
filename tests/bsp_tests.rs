@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use linked_bundle_node_map::{
-    Point, PointBox, ScreenBox, Transform,
-    bsp::{IsIndexed, MouseIndex, ScreenIndex},
+    PointBox, ScreenBox, Transform,
+    bsp::{IdxBoxAction, IdxBoxIter, ScreenIndex, ScreenSlot},
     calc::Options,
     link::{Animation, Link, LinkContainer},
     node::{Node, NodeStates},
@@ -33,7 +33,10 @@ fn screen_idx_iter_tests() {
         0,
         Vec::new(),
     );
-    idx.index_node(src.id, (None, Some(src.index_bound(idx.step))));
+    idx.index(
+        ScreenSlot::Node(src.id),
+        (None, Some(src.index_bound(idx.step))),
+    );
 
     iter = idx.on_screen(10, 10, &t);
     let screena = ScreenBox {
@@ -59,7 +62,10 @@ fn screen_idx_iter_tests() {
     };
     assert_eq!(iter.next(), Some((vec![0], Vec::new(), screena,)));
     assert!(iter.next().is_none());
-    idx.index_node(dst.id, (None, Some(dst.index_bound(idx.step))));
+    idx.index(
+        ScreenSlot::Node(dst.id),
+        (None, Some(dst.index_bound(idx.step))),
+    );
     iter = idx.on_screen(10, 10, &t);
     assert_eq!(iter.next(), Some((vec![0], Vec::new(), screena)));
     assert_eq!(iter.next(), Some((vec![1], Vec::new(), screend)));
@@ -80,7 +86,7 @@ fn screen_idx_iter_tests() {
         animation: Animation::Both,
     });
     link.update(&mut ns, &mut opts, &mut animations);
-    idx.index_link(link.id, link.screen_index(idx.step, true));
+    idx.index(ScreenSlot::Link(link.id), link.screen_index(idx.step, true));
     iter = idx.on_screen(10, 10, &t);
     assert_eq!(iter.next(), Some((vec![0], vec![link.id], screena)));
     assert_eq!(iter.next(), Some((vec![1], Vec::new(), screend)));
@@ -90,11 +96,17 @@ fn screen_idx_iter_tests() {
     iter = idx.on_screen(5, 5, &t);
     assert_eq!(iter.next(), Some((Vec::new(), vec![link.id], screenb)));
     assert!(iter.next().is_none());
-    idx.index_link(link.id, link.screen_index(idx.step, false));
+    idx.index(
+        ScreenSlot::Link(link.id),
+        link.screen_index(idx.step, false),
+    );
     iter = idx.on_screen(5, 5, &t);
     assert!(iter.next().is_none());
 
-    idx.index_node(j.id, (None, Some(j.index_bound(idx.step))));
+    idx.index(
+        ScreenSlot::Node(j.id),
+        (None, Some(j.index_bound(idx.step))),
+    );
     assert_eq!(
         idx.max_screen().unwrap(),
         ScreenBox {
@@ -108,70 +120,23 @@ fn screen_idx_iter_tests() {
 }
 
 #[test]
-fn is_indexed_tests() {
-    let mut idx = IsIndexed::<u32>::new(2);
-    assert!(idx.is_empty());
-    assert!(!idx.is_mouse(0));
-    assert!(!idx.is_screen(0));
-
-    idx.add_mouse(0);
-    assert!(!idx.is_empty());
-    assert!(idx.is_mouse(0));
-    assert!(!idx.is_screen(0));
-
-    idx.add_screen(0);
-    assert!(!idx.is_empty());
-    assert!(idx.is_screen(0));
-    assert!(idx.is_mouse(0));
-    idx.clear_screen(0);
-    assert!(!idx.is_empty());
-    assert!(idx.is_mouse(0));
-    assert!(!idx.is_screen(0));
-    idx.clear_mouse(0);
-    assert!(!idx.is_mouse(0));
-    assert!(!idx.is_screen(0));
-    assert!(idx.is_empty());
-}
-
-#[test]
-fn mouse_index_tests() {
-    let mut m = MouseIndex::new(5, 2);
-    assert!(m.in_point(&Point { x: 0.0, y: 0.0 }).is_none());
-    let mut src = Node {
-        x: 2.5,
-        y: 2.5,
-        w: 5.0,
-        h: 5.0,
-        id: 11,
-        label: String::from("shoe on head"),
-        opt: 0,
-        groups: Vec::new(),
-    };
-    m.update(src.id, (None, Some(src.index_bound(m.step))));
-    assert_eq!(
-        m.in_point(&Point { x: 0.0, y: 0.0 })
-            .unwrap()
-            .map(|x| *x)
-            .collect::<Vec<u32>>(),
-        vec![11]
-    );
-    assert!(m.in_point(&Point { x: -1.0, y: 0.0 }).is_none());
-    m.update(src.id, (Some(src.index_bound(m.step)), None));
-    assert!(m.in_point(&Point { x: 0.0, y: 0.0 }).is_none());
-    src.x = 0.0;
-    src.y = 0.0;
-    m.update(src.id, (None, Some(src.index_bound(m.step))));
-    // should now be in 4 points
-    for p in [
-        Point { x: -1.0, y: 0.0 },
-        Point { x: 1.0, y: 0.0 },
-        Point { x: 0.0, y: -1.0 },
-        Point { x: 0.0, y: 1.0 },
-    ] {
-        assert_eq!(
-            m.in_point(&p).unwrap().map(|x| *x).collect::<Vec<u32>>(),
-            vec![11]
-        );
-    }
-    assert!(m.in_point(&Point { x: 6.0, y: 0.0 }).is_none());
+fn iter_box_tests() {
+    let mut iter = IdxBoxIter::new(None, None, 1);
+    assert!(iter.next().is_none());
+    iter = IdxBoxIter::new(Some((1..=1, 1..=1)), None, 1);
+    assert_eq!(iter.next(), Some((1, 1, IdxBoxAction::Remove)));
+    assert!(iter.next().is_none());
+    iter = IdxBoxIter::new(None, Some((1..=1, 1..=1)), 1);
+    assert_eq!(iter.next(), Some((1, 1, IdxBoxAction::Add)));
+    assert!(iter.next().is_none());
+    iter = IdxBoxIter::new(Some((1..=1, 1..=1)), Some((1..=1, 1..=1)), 1);
+    assert!(iter.next().is_none());
+    iter = IdxBoxIter::new(Some((1..=2, 1..=2)), Some((2..=3, 2..=3)), 1);
+    assert_eq!(iter.next(), Some((1, 1, IdxBoxAction::Remove)));
+    assert_eq!(iter.next(), Some((2, 1, IdxBoxAction::Remove)));
+    assert_eq!(iter.next(), Some((1, 2, IdxBoxAction::Remove)));
+    assert_eq!(iter.next(), Some((3, 2, IdxBoxAction::Add)));
+    assert_eq!(iter.next(), Some((2, 3, IdxBoxAction::Add)));
+    assert_eq!(iter.next(), Some((3, 3, IdxBoxAction::Add)));
+    assert!(iter.next().is_none());
 }

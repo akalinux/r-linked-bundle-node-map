@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::{
     CalculatorTrait, FullBox, GetCenter, Point, PointBox,
-    bsp::{IndexPart, IndexSet, Indexers},
+    bsp::{IndexPart, IndexSet, ScreenIndex, ScreenSlot},
     calc::{BacklogUpdates, Options},
     constants::{
         DEFAULT_ANIMATION_COLOR, DEFAULT_ANIMATION_DASHES, DEFAULT_ANIMATION_WIDTH_SCALE,
@@ -57,18 +57,13 @@ impl LinkStates {
         nodes: &NodeStates,
         ops: &mut Options,
         animations: &mut HashMap<u64, ()>,
-        idx: &mut Indexers,
-        all: bool,
+        idx: &mut ScreenIndex,
     ) {
         for lid in updates {
             match self.get_mut(lid) {
                 Some(lc) => {
-                    if all {
-                        lc.update(nodes, ops, animations);
-                        idx.add_link(lc);
-                    } else {
-                        idx.index_mouse_link(lc);
-                    }
+                    lc.update(nodes, ops, animations);
+                    idx.index(ScreenSlot::Link(*lid), lc.screen_index(idx.step, true));
                 }
                 _ => {}
             }
@@ -77,7 +72,7 @@ impl LinkStates {
     pub fn update_links(
         &mut self,
         node_id: u32,
-        idx: &mut Indexers,
+        idx: &mut ScreenIndex,
         nodes: &NodeStates,
         ops: &mut Options,
         animations: &mut HashMap<u64, ()>,
@@ -98,7 +93,7 @@ impl LinkStates {
                         backlog.links.insert(*i, ());
                     } else {
                         lc.update(nodes, ops, animations);
-                        idx.add_link(lc);
+                        idx.index(ScreenSlot::Link(*i), lc.screen_index(idx.step, true));
                     }
                 }
             }
@@ -163,13 +158,15 @@ impl LinkStates {
                 match exists {
                     true => match empty {
                         true => {
-                            if let Some(res) = self.updates.remove(&id) {
-                                *old = Some(res);
-                            }
-                            if old.is_none()
-                                && let Some(res) = self.links.remove(&id)
-                            {
-                                *old = Some(res);
+                            if !self.bulk {
+                                if let Some(res) = self.updates.remove(&id) {
+                                    *old = Some(res);
+                                }
+                                if old.is_none()
+                                    && let Some(res) = self.links.remove(&id)
+                                {
+                                    *old = Some(res);
+                                }
                             }
                         }
                         _ => (),
@@ -241,6 +238,8 @@ impl LinkStates {
         nodes: &NodeStates,
         ops: &mut Options,
         animations: &mut HashMap<u64, ()>,
+        idx: &mut ScreenIndex,
+        backlog: &mut BacklogUpdates,
     ) -> &'l mut LinkContainer {
         self.manage_cross_link(true, link.id, link.src, link.dst, true);
         let bulk = self.bulk;
@@ -250,8 +249,11 @@ impl LinkStates {
             .manage(link.get_container_id(), true, &mut None)
             .unwrap();
         lc.add_link(link);
-        if !bulk {
+        if bulk {
+            backlog.links.insert(id, ());
+        } else {
             lc.update(nodes, ops, animations);
+            idx.index(ScreenSlot::Link(id), lc.screen_index(idx.step, true));
         }
         return lc;
     }
@@ -261,14 +263,15 @@ impl LinkStates {
         nodes: &NodeStates,
         ops: &mut Options,
         animations: &mut HashMap<u64, ()>,
-    ) -> Vec<LinkContainer> {
-        let mut removed = Vec::new();
+        idx: &mut ScreenIndex,
+        backlog: &mut BacklogUpdates,
+    ) {
         let bulk = self.bulk;
         let links;
         if let Some(l) = self.link_links.remove(&id) {
             links = l;
         } else {
-            return removed;
+            return;
         }
         for lid in links.keys() {
             let src;
@@ -286,12 +289,17 @@ impl LinkStates {
             self.manage_nl(*lid, false);
             let mut rm = None;
             self.manage(*lid, false, &mut rm);
-            if let Some(lc) = rm {
-                removed.push(lc);
+            if bulk {
+                backlog.links.insert(*lid, ());
+            } else {
+                if let Some(lc) = rm {
+                    idx.index(ScreenSlot::Link(lc.id), (lc.screen_index.clone(), None));
+                } else if let Some(lc) = self.links.get_mut(lid) {
+                    idx.index(ScreenSlot::Link(lc.id), lc.screen_index(idx.step, true));
+                }
             }
             self.manage_cross_link(false, id, src, dst, true);
         }
-        return removed;
     }
     pub fn bundle_add<'l>(
         &'l mut self,
@@ -299,6 +307,8 @@ impl LinkStates {
         nodes: &NodeStates,
         ops: &mut Options,
         animations: &mut HashMap<u64, ()>,
+        idx: &mut ScreenIndex,
+        backlog: &mut BacklogUpdates,
     ) -> &'l mut LinkContainer {
         let bulk = self.bulk;
         self.manage_cross_link(true, bunlde.id, bunlde.src, bunlde.dst, false);
@@ -306,8 +316,11 @@ impl LinkStates {
             .manage(bunlde.get_container_id(), true, &mut None)
             .unwrap();
         lc.add_bundle(bunlde);
-        if !bulk {
+        if bulk {
+            backlog.links.insert(lc.id, ());
+        } else {
             lc.update(nodes, ops, animations);
+            idx.index(ScreenSlot::Link(lc.id), lc.screen_index(idx.step, true));
         }
         return lc;
     }
@@ -317,14 +330,15 @@ impl LinkStates {
         nodes: &NodeStates,
         ops: &mut Options,
         animations: &mut HashMap<u64, ()>,
-    ) -> Vec<LinkContainer> {
-        let mut removed = Vec::new();
+        idx: &mut ScreenIndex,
+        backlog: &mut BacklogUpdates,
+    ) {
         let bulk = self.bulk;
         let bundles;
         if let Some(l) = self.bundle_links.remove(&id) {
             bundles = l;
         } else {
-            return removed;
+            return;
         }
         for lid in bundles.keys() {
             let src;
@@ -341,12 +355,18 @@ impl LinkStates {
             }
             let mut rm = None;
             self.manage(*lid, false, &mut rm);
-            if let Some(lc) = rm {
-                removed.push(lc);
+            if bulk {
+                backlog.links.insert(*lid, ());
+            } else {
+                if let Some(lc) = rm {
+                    idx.index(ScreenSlot::Link(*lid), (lc.screen_index.clone(), None));
+                } else if let Some(lc) = self.get_mut(lid) {
+                    idx.index(ScreenSlot::Link(lc.id), lc.screen_index(idx.step, true));
+                }
             }
             self.manage_cross_link(false, id, src, dst, false);
         }
-        return removed;
+        return;
     }
 }
 
@@ -513,7 +533,6 @@ pub struct LinkContainer {
     pub bundles: Vec<Bundle>,
     pub id: u64,
     pub opt: u32,
-    mouse_index: IndexPart,
     screen_index: IndexPart,
     link_src: Option<LinkSource>,
 }
@@ -899,11 +918,7 @@ impl LinkContainer {
             points.push(self.get_xy(src.x, src.y, r, angle));
         }
     }
-    pub fn mouse_index(&mut self, boundry: i64, needs_new: bool) -> IndexSet {
-        let new = self.build_index_bounds(boundry, needs_new);
-        let old = mem::replace(&mut self.mouse_index, new.clone());
-        return (old, new);
-    }
+
     pub fn build_index_bounds(&self, boundry: i64, needs_new: bool) -> IndexPart {
         match needs_new {
             true => match &self.link_src {
@@ -933,7 +948,6 @@ impl LinkContainer {
             id,
             links: Vec::new(),
             bundles: Vec::new(),
-            mouse_index: None,
             screen_index: None,
             opt: 0,
             link_src: None,
