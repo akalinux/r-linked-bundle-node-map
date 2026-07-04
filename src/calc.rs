@@ -225,6 +225,7 @@ impl Calculator {
         }
         return res;
     }
+
     pub fn new_with_settings(screen_mouse_b: i64, size: usize) -> Self {
         return Self {
             links: LinkStates::new(),
