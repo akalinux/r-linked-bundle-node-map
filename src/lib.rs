@@ -20,6 +20,7 @@ pub struct ScreenBox {
     pub step: i64,
 }
 
+impl CalculatorTrait for ScreenBox {}
 #[wasm_bindgen]
 impl ScreenBox {
     pub fn from_step(x: i64, y: i64, step: i64) -> Self {
@@ -29,6 +30,27 @@ impl ScreenBox {
             x,
             y,
             step,
+        }
+    }
+    pub fn transform(&self, t: &Transform) -> Self {
+        let p = self.to_map_xy(
+            &Point {
+                x: self.x as f64,
+                y: self.y as f64,
+            },
+            t,
+        );
+        let x = p.x as i64;
+        let y = p.y as i64;
+        let width = (self.width as f64 / t.k) as u32;
+        let height = (self.height as f64 / t.k) as u32;
+
+        Self {
+            width,
+            height,
+            x,
+            y,
+            step: self.step,
         }
     }
     pub fn empty() -> Self {
@@ -56,8 +78,16 @@ impl ScreenBox {
             height -= m;
         }
         let p = ZERO_POINT.to_map_xy(&ZERO_POINT, t);
-        let x = p.x as i64;
-        let y = p.y as i64;
+        let mut x = p.x as i64;
+        let mut y = p.y as i64;
+        for i in [&mut x, &mut y] {
+            let m = *i % step;
+            if m < 0 {
+                *i -= step + m;
+            } else {
+                *i -= m;
+            }
+        }
         return Self {
             width: width + step as u32,
             height: height + step as u32,
@@ -187,6 +217,7 @@ impl ScreenBox {
         return (self.x..=self.bound_x(), self.y..=self.bound_y());
     }
 }
+
 /// Map Movement transformation struct.
 #[wasm_bindgen(inspectable)]
 pub struct Move {

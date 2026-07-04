@@ -16,7 +16,7 @@ pub enum LabelPosition {
 }
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Node {
     pub x: f64,
     pub y: f64,
@@ -134,6 +134,9 @@ impl FullBox for Node {
 }
 #[wasm_bindgen]
 impl Node {
+    pub fn in_point(&self, p: &Point) -> bool {
+        self.inside_square(&self.get_center(), p, self.w, self.h)
+    }
     pub fn get_min_r(&self) -> f64 {
         if self.w < self.h {
             return self.w;
@@ -218,6 +221,17 @@ pub struct NodeStates {
 }
 
 impl NodeStates {
+    pub fn node_in_point(&self, id: u32, p: &Point) -> Option<Node> {
+        match self.get(id) {
+            Some(n) => {
+                if n.in_point(p) {
+                    return Some(n.clone());
+                }
+                return None;
+            }
+            _ => return None,
+        }
+    }
     pub fn get_related<'n>(&'n mut self, node_ids: &[u32]) -> GetRelatedNodes<'n> {
         return GetRelatedNodes::new(node_ids, self);
     }

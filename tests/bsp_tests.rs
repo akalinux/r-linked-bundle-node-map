@@ -77,7 +77,7 @@ fn screen_idx_iter_tests() {
     let mut animations = HashMap::new();
     let mut link = LinkContainer::new(0, 1);
 
-    link.add_link(Link {
+    link.link_add(Link {
         id: 0,
         src: 0,
         dst: 1,

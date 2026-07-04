@@ -23,6 +23,12 @@ pub struct LinkStates {
 }
 
 impl LinkStates {
+    pub fn link_contains_point(&self, id: u64, p: &Point) -> Option<LinkContainsType> {
+        if let Some(l) = self.get(&id) {
+            return l.contains_point(p);
+        }
+        None
+    }
     pub fn new() -> Self {
         Self {
             bulk: false,
@@ -59,7 +65,6 @@ impl LinkStates {
         animations: &mut HashMap<u64, ()>,
         idx: &mut ScreenIndex,
     ) {
-        self.bulk = false;
         for lid in updates {
             let mut remove = false;
             match self.get_mut(lid) {
@@ -110,6 +115,7 @@ impl LinkStates {
             _ => return,
         }
     }
+
     fn manage_nl(&mut self, id: u64, add: bool) {
         let (src, dst) = unsafe { mem::transmute::<u64, (u32, u32)>(id) };
         for n in [src, dst] {
@@ -258,7 +264,7 @@ impl LinkStates {
         let lc = self
             .manage(link.get_container_id(), true, &mut None)
             .unwrap();
-        lc.add_link(link);
+        lc.link_add(link);
         if bulk {
             backlog.links.insert(id, ());
         } else {
@@ -289,7 +295,7 @@ impl LinkStates {
 
             {
                 let link = self.links.get_mut(&lid).unwrap();
-                link.remove_link(id);
+                link.link_remove(id);
 
                 (src, dst) = link.get_node_ids();
             }
@@ -337,6 +343,14 @@ impl LinkStates {
                 self.link_links.remove(&l.id);
             }
         }
+        let (src, dst) = link.get_node_ids();
+        for node_id in [src, dst] {
+            let nl = self.node_links.get_mut(&node_id).unwrap();
+            nl.remove(&id);
+            if nl.is_empty() {
+                self.node_links.remove(&node_id);
+            }
+        }
     }
 
     pub fn bundle_add<'l>(
@@ -353,7 +367,7 @@ impl LinkStates {
         let lc = self
             .manage(bunlde.get_container_id(), true, &mut None)
             .unwrap();
-        lc.add_bundle(bunlde);
+        lc.bundle_add(bunlde);
         if bulk {
             backlog.links.insert(lc.id, ());
         } else {
@@ -384,7 +398,7 @@ impl LinkStates {
 
             {
                 let link = self.links.get_mut(&lid).unwrap();
-                link.remove_bundle(id);
+                link.bundle_remove(id);
 
                 (src, dst) = link.get_node_ids();
             }
@@ -439,6 +453,10 @@ impl Link {
             animation,
             label,
         }
+    }
+
+    pub fn link_id(&self) -> u64 {
+        create_container_id(self.src, self.dst)
     }
 }
 
@@ -531,6 +549,9 @@ impl Bundle {
             links,
             opt,
         }
+    }
+    pub fn link_id(&self) -> u64 {
+        create_container_id(self.src, self.dst)
     }
 }
 
@@ -993,7 +1014,7 @@ impl LinkContainer {
         self.link_src = None;
     }
 
-    pub fn add_link(&mut self, link: Link) -> Option<Link> {
+    pub fn link_add(&mut self, link: Link) -> Option<Link> {
         if link.src == link.dst {
             panic!("Link.src and Link.dst cannot be the same!");
         }
@@ -1007,7 +1028,7 @@ impl LinkContainer {
         return None;
     }
 
-    pub fn add_bundle(&mut self, bundle: Bundle) -> Option<Bundle> {
+    pub fn bundle_add(&mut self, bundle: Bundle) -> Option<Bundle> {
         if bundle.src == bundle.dst {
             panic!("Bundle.src and Bundle.dst cannot be the same!");
         }
@@ -1021,7 +1042,7 @@ impl LinkContainer {
         return None;
     }
 
-    pub fn remove_link(&mut self, id: u32) -> Option<Link> {
+    pub fn link_remove(&mut self, id: u32) -> Option<Link> {
         self.clear_points();
 
         for (i, l) in self.links.iter().enumerate() {
@@ -1033,7 +1054,7 @@ impl LinkContainer {
         return None;
     }
 
-    pub fn remove_bundle(&mut self, id: u32) -> Option<Bundle> {
+    pub fn bundle_remove(&mut self, id: u32) -> Option<Bundle> {
         self.clear_points();
         for (i, l) in self.bundles.iter().enumerate() {
             if l.id == id {

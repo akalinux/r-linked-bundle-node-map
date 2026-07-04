@@ -1,7 +1,7 @@
 use crate::{
-    CalculatorTrait, Point, PointBox,
-    bsp::{ScreenIndex, ScreenSlot},
-    constants::DEFAULT_NODE_R,
+    CalculatorTrait, Point, PointBox, ScreenBox, Transform,
+    bsp::{IdxBoxAction, IdxBoxIter, OnScreen, PointLookupResult, ScreenIndex, ScreenSlot},
+    constants::{DEFAULT_NODE_R, ZERO_TRANSFORM},
     link::{Bundle, BunldeOpt, Link, LinkContainerOpt, LinkOpt, LinkStates},
     node::{Node, NodeOpt, NodeStates},
 };
@@ -33,6 +33,7 @@ macro_rules! build_opts {
             pub fn $set(&mut self, opt: $t) -> Option<$t> {
                 return self.$field.insert(opt.id, opt);
             }
+
             pub fn $get<'a>(&mut self, id: &u32) -> &'a $t {
                 if let Some(v) = self.$field.get(id) {
                     return unsafe { mem::transmute(v) };
@@ -81,6 +82,41 @@ pub struct BulkLoad {
     pub links: Vec<Link>,
     pub bundles: Vec<Bundle>,
 }
+
+#[wasm_bindgen]
+impl BulkLoad {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        link_opts: Vec<LinkOpt>,
+        bundle_ops: Vec<BunldeOpt>,
+        node_ops: Vec<NodeOpt>,
+        lc_ops: Vec<LinkContainerOpt>,
+        nodes: Vec<Node>,
+        links: Vec<Link>,
+        bundles: Vec<Bundle>,
+    ) -> Self {
+        Self {
+            bundle_ops,
+            node_ops,
+            lc_ops,
+            nodes,
+            link_opts,
+            links,
+            bundles,
+        }
+    }
+    pub fn nlb(nodes: Vec<Node>, links: Vec<Link>, bundles: Vec<Bundle>) -> Self {
+        Self::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            nodes,
+            links,
+            bundles,
+        )
+    }
+}
 impl Options {
     pub fn new() -> Self {
         return Self {
@@ -110,6 +146,7 @@ macro_rules! calc_acl {
     ($field:ident,$t:ty) => {
         paste! {
             impl<'c> Calculator {
+
                 pub fn [<$field>](&'c self) -> &'c $t {
                     return &self.$field
                 }
@@ -121,17 +158,73 @@ macro_rules! calc_acl {
         }
     };
 }
-
 calc_acl!(nodes, NodeStates);
+calc_acl!(links, LinkStates);
 calc_acl!(backlog, BacklogUpdates);
 calc_acl!(animations, HashMap<u64,()>);
 calc_acl!(options, Options);
 calc_acl!(indexer, ScreenIndex);
 
+macro_rules! calc_bulk {
+    ($t:ty,$field:ident) => {
+        paste! {
+        impl <'c> Calculator {
+
+            pub fn [<$field _opt_bulk>](&mut self,list: Vec<$t>) {
+                self.options.$field.reserve(list.len());
+                for o in list {
+                    self.options.$field.insert(o.id,o);
+                }
+            }
+        }
+        }
+    };
+}
+calc_bulk!(NodeOpt, node);
+calc_bulk!(LinkContainerOpt, lc);
+calc_bulk!(LinkOpt, link);
+calc_bulk!(BunldeOpt, bundle);
+
 impl CalculatorTrait for Calculator {}
 
+impl Calculator {
+    pub fn on_screen<'s>(&'s self, width: u32, height: u32, t: &Transform) -> OnScreen<'s> {
+        self.indexer.on_screen(width, height, t)
+    }
+}
 #[wasm_bindgen]
 impl Calculator {
+    pub fn current_screen(&self) -> Option<ScreenBox> {
+        self.indexer.max_screen()
+    }
+    pub fn default_screen_block(&self) -> ScreenBox {
+        let step = self.indexer.step;
+        ScreenBox::new(&ZERO_TRANSFORM, step as u32, step as u32, step)
+    }
+
+    pub fn wanted_screens(&self, width: u32, height: u32, t: &Transform) -> Vec<ScreenBox> {
+        let mut res = Vec::new();
+        let step = self.indexer.step;
+        let new = Some(ScreenBox::new(t, width, height, step).getxy_bounds());
+        let old;
+        match self.indexer.max_screen() {
+            Some(s) => old = Some(s.getxy_bounds()),
+            _ => old = None,
+        }
+        for (x, y, state) in IdxBoxIter::new(old, new, step) {
+            match state {
+                IdxBoxAction::Add => res.push(ScreenBox {
+                    width: step as u32,
+                    height: step as u32,
+                    x,
+                    y,
+                    step,
+                }),
+                _ => (),
+            }
+        }
+        return res;
+    }
     pub fn new_with_settings(screen_mouse_b: i64, size: usize) -> Self {
         return Self {
             links: LinkStates::new(),
@@ -143,6 +236,61 @@ impl Calculator {
         };
     }
 
+    pub fn bulk_load(&mut self, bl: BulkLoad) {
+        self.lc_opt_bulk(bl.lc_ops);
+        self.node_opt_bulk(bl.node_ops);
+        self.link_opt_bulk(bl.link_opts);
+        self.bundle_opt_bulk(bl.bundle_ops);
+        self.links.bulk = true;
+        self.nodes.reserve(bl.nodes.len());
+
+        for node in bl.nodes {
+            let id = node.id;
+            self.node_add(node);
+            self.links.update_links(
+                id,
+                &mut self.indexer,
+                &self.nodes,
+                &mut self.options,
+                &mut self.animations,
+                &mut self.backlog,
+            );
+        }
+        self.links.reserve(bl.links.len());
+
+        for link in bl.links {
+            self.link_add(link);
+        }
+
+        for bundle in bl.bundles {
+            self.bundle_add(bundle);
+        }
+
+        self.finish_bulk_load();
+    }
+
+    pub fn start_bulk_load(&mut self) {
+        self.links.bulk = true;
+    }
+
+    pub fn finish_bulk_load(&mut self) {
+        self.links.bulk = false;
+        self.links.bulk_update(
+            self.backlog.links.keys(),
+            &self.nodes,
+            &mut self.options,
+            &mut self.animations,
+            &mut self.indexer,
+        );
+
+        self.options.lc.shrink_to_fit();
+        self.options.link.shrink_to_fit();
+        self.options.node.shrink_to_fit();
+        self.options.bundle.shrink_to_fit();
+        self.nodes.shrink_to_fit();
+        self.backlog.clear();
+        self.links.shrink_to_fit();
+    }
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         let mouse_b = (DEFAULT_NODE_R as i64) * 4;
@@ -164,6 +312,9 @@ impl Calculator {
         );
         let node_id = node.id;
         let res = self.nodes.insert(node);
+        if self.links.bulk {
+            return res;
+        }
         self.links.update_links(
             node_id,
             &mut self.indexer,
@@ -245,6 +396,9 @@ impl Calculator {
         );
     }
 
+    pub fn in_point(&self, p: &Point, t: &Transform) -> Option<PointLookupResult> {
+        self.indexer.in_point(p, t, &self.nodes, &self.links)
+    }
     pub fn move_nodes(&mut self, node_ids: &[u32], p: &Point) {
         let idx = &mut self.indexer;
         let mut ns = Vec::with_capacity(node_ids.len() * 2);

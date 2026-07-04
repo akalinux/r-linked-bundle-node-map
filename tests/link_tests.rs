@@ -33,7 +33,7 @@ fn validate_get_xy() {
 fn compute_link_tests() {
     let mut lc = LinkContainer::new(0, 1);
     let lc_opt = LinkContainerOpt::defaults();
-    lc.add_link(Link {
+    lc.link_add(Link {
         id: 0,
         src: 0,
         dst: 1,
@@ -58,7 +58,7 @@ fn compute_link_tests() {
     assert_relative_eq!(cu.links[0].src.y as f32, 0.0);
     assert_relative_eq!(cu.links[0].dst.x as f32, 8.0);
     assert_relative_eq!(cu.links[0].dst.y as f32, 0.0);
-    lc.add_link(Link {
+    lc.link_add(Link {
         id: 1,
         src: 0,
         dst: 1,
@@ -87,7 +87,7 @@ fn compute_link_tests() {
     assert_relative_eq!(cu.links[1].dst.x, 8.0);
     assert_relative_eq!(cu.links[1].dst.y, 1.0, epsilon = 0.009);
 
-    lc.add_link(Link {
+    lc.link_add(Link {
         id: 2,
         src: 0,
         dst: 1,
@@ -192,7 +192,7 @@ fn compute_bundle_tests() {
 fn animation_tests() {
     let mut lc = LinkContainer::new(0, 1);
     let lc_opt = LinkContainerOpt::defaults();
-    lc.add_link(Link {
+    lc.link_add(Link {
         id: 0,
         src: 0,
         dst: 1,
@@ -211,7 +211,7 @@ fn animation_tests() {
     assert_relative_eq!(cu.animations[0].dst.x, src.x + 2.0);
     assert_relative_eq!(cu.animations[0].dst.y, src.y, epsilon = 0.01);
     assert_relative_eq!(cu.animations[0].width, cu.width * 0.5);
-    lc.add_link(Link {
+    lc.link_add(Link {
         id: 0,
         src: 1,
         dst: 0,
@@ -226,7 +226,7 @@ fn animation_tests() {
     assert_relative_eq!(cu.animations[0].dst.x, dst.x - 2.0);
     assert_relative_eq!(cu.animations[0].dst.y, dst.y, epsilon = 0.01);
     assert_relative_eq!(cu.animations[0].width, cu.width * 0.5);
-    lc.add_link(Link {
+    lc.link_add(Link {
         id: 0,
         src: 0,
         dst: 1,
@@ -275,9 +275,9 @@ fn point_inside_tests() {
     let mut animations = HashMap::new();
     let mut lc = LinkContainer::new(src.id, dst.id);
     let link = Link::new(0, 0, 1, 0, Animation::None, String::from("This is a test"));
-    lc.add_link(link.clone());
+    lc.link_add(link.clone());
     let bundle = Bundle::new(0, 0, 1, 0, Vec::new(), String::from("value"));
-    lc.add_bundle(bundle.clone());
+    lc.bundle_add(bundle.clone());
     lc.update(&mut ns, &mut ops, &mut animations);
 
     assert!(lc.contains_point(&Point { x: 1.0, y: 9.0 }).is_none());

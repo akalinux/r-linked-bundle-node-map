@@ -1,4 +1,10 @@
-use crate::{ScreenBox, Transform};
+use wasm_bindgen::prelude::wasm_bindgen;
+
+use crate::{
+    CalculatorTrait, Point, ScreenBox, Transform,
+    link::{Bundle, Link, LinkContainsType, LinkStates},
+    node::{Node, NodeStates},
+};
 use std::{
     collections::{BTreeMap, HashMap},
     mem,
@@ -285,6 +291,14 @@ pub enum ScreenSlot {
     Node(u32),
     Link(u64),
 }
+
+#[wasm_bindgen]
+#[derive(Debug, PartialEq)]
+pub enum PointLookupResult {
+    Node(Node),
+    Link(Link),
+    Bundle(Bundle),
+}
 impl ScreenIndex {
     pub fn new(step: i64) -> Self {
         return Self {
@@ -293,6 +307,35 @@ impl ScreenIndex {
         };
     }
 
+    pub fn in_point(
+        &self,
+        p: &Point,
+        t: &Transform,
+        n: &NodeStates,
+        l: &LinkStates,
+    ) -> Option<PointLookupResult> {
+        let tp = p.to_map_xy(p, t);
+        let ip = tp.to_index_point(self.step);
+        if let Some(y) = self.x.get(&ip.0)
+            && let Some(r) = y.get(&ip.1)
+        {
+            for node_id in r.nodes.keys() {
+                if let Some(node) = n.node_in_point(*node_id, &tp) {
+                    return Some(PointLookupResult::Node(node));
+                }
+            }
+            for link_id in r.links.keys() {
+                if let Some(r) = l.link_contains_point(*link_id, p) {
+                    match r {
+                        LinkContainsType::Bundle(b) => return Some(PointLookupResult::Bundle(b)),
+                        LinkContainsType::Link(l) => return Some(PointLookupResult::Link(l)),
+                    }
+                }
+            }
+        }
+
+        None
+    }
     pub fn max_screen(&self) -> Option<ScreenBox> {
         let idx_x = &self.x;
         if idx_x.is_empty() {

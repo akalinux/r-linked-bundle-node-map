@@ -1,6 +1,6 @@
 use std::f64::consts::PI;
 
-use crate::Point;
+use crate::{Point, Transform};
 
 /// Used to slightly oversize link boxes for mouse over intersections preventing misses.
 pub const TRIANGLE_MARGINE_FOR_ERROR: f64 = 1.00004;
@@ -34,3 +34,9 @@ pub const DEFAULT_ANIMATION_WIDTH_SCALE: f64 = 1.0 / 3.0;
 pub const ZERO_POINT: Point = Point { x: 0.0, y: 0.0 };
 
 pub const SCREEN_EPSILON: f64 = 0.001;
+
+pub const ZERO_TRANSFORM: Transform = Transform {
+    x: 0.0,
+    y: 0.0,
+    k: 1.0,
+};
