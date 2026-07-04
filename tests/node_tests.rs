@@ -177,3 +177,83 @@ fn center_tests() {
     ns.remove(b.id);
     assert_eq!(ns.get_center(), Point { x: 0.0, y: 0.0 });
 }
+
+#[test]
+fn order_tests() {
+    let l = String::from("value");
+    let mut a = Node {
+        x: 0.0,
+        y: 0.0,
+        h: 2.0,
+        w: 2.0,
+        id: 2,
+        label: l.clone(),
+        opt: 0,
+        groups: Vec::from([0, 1]),
+    };
+    let mut b = Node {
+        x: 5.0,
+        y: 5.0,
+        h: 2.0,
+        w: 2.0,
+        id: 1,
+        label: l.clone(),
+        opt: 0,
+        groups: Vec::from([0, 1]),
+    };
+    let mut sorted = Vec::from(&[b.clone(), a.clone()]);
+    sorted.sort();
+    assert_eq!(sorted, Vec::from(&[a.clone(), b.clone()]));
+    // a is bigger on the x axis, so it should come before b
+    b.x = 0.0;
+    b.y = 0.0;
+    a.w = 3.0;
+    sorted = Vec::from(&[b.clone(), a.clone()]);
+    sorted.sort();
+    assert_eq!(sorted, Vec::from(&[a.clone(), b.clone()]));
+    // a is bigger on the y axis, so it should come before b
+    a.w = 2.0;
+    a.h = 3.0;
+    sorted = Vec::from(&[b.clone(), a.clone()]);
+    sorted.sort();
+    assert_eq!(sorted, Vec::from(&[a.clone(), b.clone()]));
+    // same size and place.. so compare on id.. b is before a.
+    a.h = 2.0;
+    sorted = Vec::from(&[a.clone(), b.clone()]);
+    sorted.sort();
+    assert_eq!(sorted, Vec::from(&[b.clone(), a.clone()]));
+}
+
+#[test]
+fn contains_tests() {
+    let a = Node {
+        x: 1.0,
+        y: 1.0,
+        h: 2.0,
+        w: 2.0,
+        id: 2,
+        label: String::from("blah"),
+        opt: 0,
+        groups: Vec::from([0, 1]),
+    };
+    assert!(a.x_contains(0.0));
+    assert!(a.x_contains(2.0));
+    assert!(a.y_contains(0.0));
+    assert!(a.y_contains(2.0));
+    assert!(!a.x_contains(-1.0));
+    assert!(!a.x_contains(3.0));
+    assert!(!a.y_contains(-1.0));
+    assert!(!a.y_contains(3.0));
+    let b = Node {
+        x: 3.0,
+        y: 3.0,
+        h: 2.0,
+        w: 2.0,
+        id: 2,
+        label: String::from("blah"),
+        opt: 0,
+        groups: Vec::from([0, 1]),
+    };
+    assert!(a.overlaps(&a));
+    assert!(!a.overlaps(&b));
+}

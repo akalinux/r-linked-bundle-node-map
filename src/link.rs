@@ -10,6 +10,7 @@ use crate::{
         DEFAULT_ANIMATION_COLOR, DEFAULT_ANIMATION_DASHES, DEFAULT_ANIMATION_WIDTH_SCALE,
         DEFAULT_BUNDLE_COLOR, DEFAULT_COLOR, DEFAULT_LINK_SCALE, DEFAULT_OPT_NAME,
     },
+    id_compare,
     node::{Node, NodeStates},
 };
 
@@ -431,7 +432,7 @@ pub enum Animation {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Link {
     pub id: u32,
     pub src: u32,
@@ -527,7 +528,7 @@ impl BunldeOpt {
 
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Bundle {
     pub id: u32,
     pub src: u32,
@@ -695,7 +696,7 @@ impl LinkBox {
 }
 
 #[wasm_bindgen]
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug)]
 pub struct AnimatedLink {
     pub src: Point,
     pub dst: Point,
@@ -1069,3 +1070,12 @@ impl LinkContainer {
         return unsafe { mem::transmute::<u64, (u32, u32)>(self.id) };
     }
 }
+
+id_compare!(
+    Link,
+    Bundle,
+    LinkOpt,
+    BunldeOpt,
+    LinkContainerOpt,
+    LinkContainer
+);

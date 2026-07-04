@@ -1,10 +1,10 @@
-use std::{collections::HashMap, mem};
+use std::{cmp::Ordering, collections::HashMap, mem};
 
 use wasm_bindgen::prelude::*;
 
 use crate::{
     CalculatorTrait, ContainsPoint, FullBox, GetCenter, Point, PointBox,
-    constants::DEFAULT_OPT_NAME,
+    constants::DEFAULT_OPT_NAME, id_compare,
 };
 
 #[wasm_bindgen]
@@ -16,7 +16,7 @@ pub enum LabelPosition {
 }
 #[wasm_bindgen(inspectable)]
 #[wasm_bindgen(getter_with_clone)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Node {
     pub x: f64,
     pub y: f64,
@@ -28,6 +28,42 @@ pub struct Node {
     pub groups: Vec<u32>,
 }
 
+impl PartialOrd for Node {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self.id == other.id {
+            return Some(Ordering::Equal);
+        } else if self.get_min_x() < other.get_min_x() {
+            return Some(Ordering::Less);
+        } else if other.get_min_x() < self.get_min_x() {
+            return Some(Ordering::Greater);
+        } else if self.get_max_x() > other.get_max_x() {
+            return Some(Ordering::Less);
+        } else if other.get_max_x() > self.get_max_x() {
+            return Some(Ordering::Greater);
+        } else
+        // if we got here.. then both min and max x are equal
+        if self.get_min_y() < other.get_min_y() {
+            return Some(Ordering::Less);
+        } else if other.get_min_y() < self.get_min_y() {
+            return Some(Ordering::Greater);
+        } else if self.get_max_y() > other.get_max_y() {
+            return Some(Ordering::Less);
+        } else if other.get_max_y() > self.get_max_y() {
+            return Some(Ordering::Less);
+        // if we got here.. then x and y axis are equal.. we just sort based on id
+        } else if self.id < other.id {
+            return Some(Ordering::Less);
+        }
+
+        Some(Ordering::Greater)
+    }
+}
+impl Eq for Node {}
+impl Ord for Node {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
 pub struct GetRelatedNodes<'n> {
     pub nodes: &'n mut NodeStates,
     pub known_nodes: HashMap<u32, ()>,
@@ -132,11 +168,28 @@ impl FullBox for Node {
         );
     }
 }
+
 #[wasm_bindgen]
 impl Node {
     pub fn in_point(&self, p: &Point) -> bool {
         self.inside_square(&self.get_center(), p, self.w, self.h)
     }
+
+    pub fn x_contains(&self, x: f64) -> bool {
+        return !(x < self.get_min_x() || self.get_max_x() < x);
+    }
+
+    pub fn y_contains(&self, y: f64) -> bool {
+        return !(y < self.get_min_y() || self.get_max_y() < y);
+    }
+
+    pub fn overlaps(&self, node: &Self) -> bool {
+        ((self.x_contains(node.get_min_x()) || self.x_contains(node.get_max_x()))
+            && (self.y_contains(node.get_min_y()) || self.y_contains(node.get_max_y())))
+            || ((node.x_contains(self.get_min_x()) || node.x_contains(self.get_max_x()))
+                && (node.y_contains(self.get_min_y()) || node.y_contains(self.get_max_y())))
+    }
+
     pub fn get_min_r(&self) -> f64 {
         if self.w < self.h {
             return self.w;
@@ -322,3 +375,5 @@ impl NodeStates {
         return None;
     }
 }
+
+id_compare!(Node, NodeOpt);

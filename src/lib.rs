@@ -489,3 +489,17 @@ pub trait CalculatorTrait {
         return Transform { x, y, k };
     }
 }
+
+macro_rules! id_compare {
+    ($($t:ident),*) => {
+        $(
+            impl PartialEq for $t {
+                fn eq(&self, other: &Self) -> bool {
+                    self.id == other.id
+                }
+            }
+        )*
+    };
+}
+
+pub(crate) use id_compare;
