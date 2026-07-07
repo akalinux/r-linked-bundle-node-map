@@ -9,24 +9,22 @@ use crate::renderer::ImgCache;
 
 pub struct ImgLoader {
     src: String,
-    wanted: Rc<RefCell<ImgCache>>,
+    wanted: *mut ImgCache,
     onload: Rc<RefCell<Option<Closure<dyn FnMut()>>>>,
     onerr: Rc<RefCell<Option<Closure<dyn FnMut(ErrorEvent)>>>>,
     pub img: HtmlImageElement,
 }
 
 impl ImgLoader {
-    pub fn new(
-        src: String,
-        wanted: Rc<RefCell<ImgCache>>,
-    ) -> Result<Rc<RefCell<Self>>, &'static str> {
+    pub fn new(src: String, cache: &mut ImgCache) -> Result<Rc<RefCell<Self>>, &'static str> {
         let img;
         match HtmlImageElement::new() {
             Ok(i) => img = i,
             Err(_) => return Err(&"Failed to create HtmlImageElement"),
         }
+        let wanted = cache as *mut ImgCache;
 
-        wanted.borrow_mut().loading += 1;
+        unsafe { (*wanted).loading += 1 };
         let res = Rc::new(RefCell::new(Self {
             src: String::from(src),
             wanted,
@@ -38,41 +36,27 @@ impl ImgLoader {
         let img_ok = img.clone();
         let res_ok = Rc::clone(&res);
         let on_load = Closure::once(move || {
-            // This call causes our drop
-            res_ok.borrow_mut().wanted.borrow_mut().loading -= 1;
-            res_ok
-                .borrow_mut()
-                .wanted
-                .borrow_mut()
-                .img_ready(&res_ok.borrow().src, Ok(img_ok));
-
-            // drop takes care of this!
-            //res_ok.borrow_mut().clear();
+            unsafe {
+                (*res_ok.borrow_mut().wanted).loading -= 1;
+                // This call causes self to drop
+                (*res_ok.borrow_mut().wanted).img_ready(&res_ok.borrow().src, Ok(img_ok));
+            };
         });
         img.set_onload(Some(on_load.as_ref().unchecked_ref()));
         res.borrow_mut().onload.borrow_mut().replace(on_load);
 
         let res_err = Rc::clone(&res);
         let on_err = Closure::once(move |e: ErrorEvent| {
-            res_err.borrow_mut().wanted.borrow_mut().loading -= 1;
+            let msg;
             match e.as_string() {
-                // This call causes our drop
-                Some(err) => res_err
-                    .borrow_mut()
-                    .wanted
-                    .borrow_mut()
-                    .img_ready(&res_err.borrow().src, Err(err)),
-                // This call causes our drop
-                None => res_err
-                    .borrow_mut()
-                    .wanted
-                    .borrow_mut()
-                    // This call causes our drop
-                    .img_ready(&res_err.borrow().src, Err(String::from("Unknown Error"))),
-            }
-
-            // drop takes care of this!
-            //res_err.borrow_mut().clear();
+                Some(err) => msg = err,
+                None => msg = String::from("Unknown Error"),
+            };
+            unsafe {
+                (*res_err.borrow_mut().wanted).loading -= 1;
+                // This call causes self to drop
+                (*res_err.borrow_mut().wanted).img_ready(&res_err.borrow().src, Err(msg));
+            };
         });
         img.set_onerror(Some(on_err.as_ref().unchecked_ref()));
         res.borrow_mut().onerr.borrow_mut().replace(on_err);
