@@ -76,6 +76,7 @@ impl ImgLoader {
 
 impl Drop for ImgLoader {
     fn drop(&mut self) {
+        // Safly clean up our handlers when we get dropped!
         self.clear();
     }
 }
