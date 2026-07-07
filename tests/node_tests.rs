@@ -245,8 +245,8 @@ fn contains_tests() {
     assert!(!a.y_contains(-1.0));
     assert!(!a.y_contains(3.0));
     let b = Node {
-        x: 3.0,
-        y: 3.0,
+        x: 4.0,
+        y: 4.0,
         h: 2.0,
         w: 2.0,
         id: 2,
