@@ -9,13 +9,14 @@ pastey = "0.2.3"
 js-sys = "0.3.103"
 web-sys = { 
     version="0.3.103", features = [
-        "ErrorEvent", 
-        "Event",
-        "HtmlImageElement",
         'CanvasRenderingContext2d',
         'Document',
         'Element', 
+        "ErrorEvent", 
+        "Event",
         'HtmlCanvasElement',
+        "HtmlImageElement",
+        "HtmlDivElement",
         'Window'
     ] 
 }

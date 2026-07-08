@@ -7,7 +7,6 @@ use crate::{
 pub mod bsp;
 pub mod calc;
 pub mod constants;
-pub mod img_loader;
 pub mod link;
 pub mod node;
 pub mod renderer;
