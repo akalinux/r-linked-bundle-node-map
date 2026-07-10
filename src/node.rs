@@ -171,6 +171,9 @@ impl FullBox for Node {
 
 #[wasm_bindgen]
 impl Node {
+    pub fn get_center(&self) -> Point {
+        Point::new(self.x, self.y)
+    }
     pub fn in_point(&self, p: &Point) -> bool {
         self.inside_square(&self.get_center(), p, self.w, self.h)
     }

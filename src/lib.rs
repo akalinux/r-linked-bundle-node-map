@@ -220,7 +220,6 @@ impl ScreenBox {
 }
 
 /// Map Movement transformation struct.
-#[wasm_bindgen(inspectable)]
 pub struct Move {
     /// The current map transformed point.
     pub start: Point,
@@ -228,9 +227,7 @@ pub struct Move {
     pub transform: Transform,
 }
 
-#[wasm_bindgen]
 impl Move {
-    #[wasm_bindgen(constructor)]
     /// Creates a new [create::Move] instance, the [Point] argument converted to the map cordinates with the [Transform].
     pub fn new(p: &Point, t: Transform) -> Self {
         let res = Self {
@@ -239,6 +236,13 @@ impl Move {
         };
 
         return res;
+    }
+
+    pub fn from_map_point(p: &Point, t: Transform) -> Self {
+        Self {
+            start: *p,
+            transform: t,
+        }
     }
     /// Returns a new [Point] representing the difference to the x and y value since the last call to [Move::stop] or object instantiation.
     pub fn stop(&mut self, p: &Point) -> Point {
@@ -250,6 +254,12 @@ impl Move {
         self.start = n;
 
         return diff;
+    }
+    pub fn center(&mut self, p: &Point) {
+        let x = p.x - self.start.x;
+        let y = p.y - self.start.y;
+        self.start.x += x;
+        self.start.y += y;
     }
 }
 
@@ -275,6 +285,9 @@ pub struct Point {
 }
 
 impl Point {
+    pub fn new(x: f64, y: f64) -> Self {
+        Self { x, y }
+    }
     pub fn move_to(&mut self, p: &Point) {
         self.x += p.x;
         self.y += p.y;

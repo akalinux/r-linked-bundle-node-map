@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use linked_bundle_node_map::{Point, ScreenBox, Transform};
+use linked_bundle_node_map::{Move, Point, ScreenBox, Transform, constants::ZERO_TRANSFORM};
 
 #[test]
 fn test_screenbox_new() {
@@ -211,4 +211,12 @@ fn screen_center() {
 fn point_to_index_tests() {
     assert_eq!(Point { x: 0.0, y: 0.0 }.to_index_point(5), (0, 0));
     assert_eq!(Point { x: 3.0, y: -1.0 }.to_index_point(5), (0, -5));
+}
+
+#[test]
+fn move_center_tests() {
+    let mut m = Move::from_map_point(&Point::new(0.0, 0.0), ZERO_TRANSFORM);
+    m.center(&Point { x: 4.0, y: 4.0 });
+
+    assert_eq!(m.start, Point::new(4.0, 4.0));
 }

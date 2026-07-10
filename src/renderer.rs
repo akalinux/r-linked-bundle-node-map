@@ -1,9 +1,17 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 mod img_loader;
+mod stater;
 use wasm_bindgen::prelude::wasm_bindgen;
 use web_sys::{HtmlCanvasElement, HtmlDivElement, HtmlImageElement};
 
-use crate::{ScreenBox, Transform, calc::Calculator, renderer::img_loader::ImgLoader};
+use crate::{
+    ScreenBox, Transform,
+    calc::Calculator,
+    renderer::{
+        img_loader::ImgLoader,
+        stater::{CurrentTarget, Stater},
+    },
+};
 
 pub enum CacheState {
     Loading(Rc<RefCell<ImgLoader>>),
@@ -28,10 +36,11 @@ pub struct Render {
     calc: *mut Calculator,
     screen_res: ScreenBox,
     cache: Option<ImgCache>,
-    t: Transform,
+    stater: Option<Stater>,
+    targets: Option<Targets>,
 }
 
-pub struct RenderLayer {
+pub struct Targets {
     div: HtmlDivElement,
     links: HtmlCanvasElement,
     animations: HtmlCanvasElement,
@@ -39,7 +48,7 @@ pub struct RenderLayer {
     highlight: HtmlCanvasElement,
 }
 
-impl Drop for RenderLayer {
+impl Drop for Targets {
     fn drop(&mut self) {
         let div = &self.div;
         for el in [&self.links, &self.nodes, &self.animations, &self.highlight] {
@@ -54,7 +63,7 @@ impl Drop for RenderLayer {
 #[wasm_bindgen]
 impl Render {
     #[wasm_bindgen(constructor)]
-    pub fn new(calc: &mut Calculator, id: String, width: u32, height: u32) -> Self {
+    pub fn new(calc: &mut Calculator, width: u32, height: u32) -> Self {
         let screen_res = ScreenBox {
             width,
             height,
@@ -65,20 +74,18 @@ impl Render {
         let res = Self {
             calc: calc as *mut Calculator,
             screen_res,
-            t: Transform {
-                x: 0.0,
-                y: 0.0,
-                k: 1.0,
-            },
             cache: None,
+            stater: None,
+            targets: None,
         };
 
         return res;
     }
-    pub fn set_transform(&mut self, t: Transform) {
-        self.screen_res = self.screen_res.transform(&t);
-        self.t = t;
+    pub fn move_screen(&mut self, t: &Transform) {
+        self.screen_res = self.screen_res.transform(t);
+        self.stater().t = t.clone();
     }
+    pub fn render(&mut self) {}
 }
 impl Render {
     pub fn cache<'c>(&'c mut self) -> &'c mut ImgCache {
@@ -86,6 +93,25 @@ impl Render {
             return self.build_cache();
         }
         return self.cache.as_mut().unwrap();
+    }
+
+    pub fn mouse_up(&mut self) {}
+    pub fn mouse_down(&mut self, ct: &CurrentTarget) {}
+    pub fn mouse_over(&mut self, ct: &CurrentTarget) {}
+
+    pub fn calc(&self) -> *mut Calculator {
+        return self.calc;
+    }
+
+    pub fn stater<'c>(&'c mut self) -> &'c mut Stater {
+        if self.stater.is_none() {
+            unsafe {
+                let s = self as *mut Self;
+                let stater = Stater::new(s);
+                (*s).stater = Some(stater);
+            }
+        }
+        return self.stater.as_mut().unwrap();
     }
 
     fn build_cache<'c>(&mut self) -> &'c mut ImgCache {
@@ -176,7 +202,7 @@ impl ImgCache {
     }
     fn cache_state(state: &CacheState) -> ImgLookupState {
         match state {
-            CacheState::Loading(i) => return ImgLookupState::Loading,
+            CacheState::Loading(_) => return ImgLookupState::Loading,
             CacheState::Loaded(i) => return ImgLookupState::Loaded(i.clone()),
             CacheState::NoImg(i) => ImgLookupState::Failed(i.clone()),
         }

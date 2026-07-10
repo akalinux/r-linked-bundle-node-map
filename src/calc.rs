@@ -191,6 +191,15 @@ impl Calculator {
     pub fn on_screen<'s>(&'s self, width: u32, height: u32, t: &Transform) -> OnScreen<'s> {
         self.indexer.on_screen(width, height, t)
     }
+
+    pub unsafe fn get_src_dst_center(&self, src: u32, dst: u32) -> Point {
+        let a = self.nodes.get(src).unwrap();
+        let b = self.nodes.get(dst).unwrap();
+        Point {
+            x: (a.x + b.x) * 0.5,
+            y: (a.y + b.y) * 0.5,
+        }
+    }
 }
 #[wasm_bindgen]
 impl Calculator {
