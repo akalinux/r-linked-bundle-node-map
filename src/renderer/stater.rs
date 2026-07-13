@@ -1,9 +1,9 @@
 use crate::{
-    Move, Point, Transform,
     bsp::PointLookupResult,
     link::{Bundle, Link},
     node::Node,
     renderer::Render,
+    Move, Point, Transform,
 };
 
 pub enum CurrentTarget {
@@ -75,9 +75,19 @@ impl Stater {
 
     pub fn mouse_down(&mut self, p: &Point) {
         self.target = self.point_state(p);
-
         unsafe { (*self.render).mouse_down(&self.target) };
     }
+
+    pub fn mouse_out(&mut self, p: &Point) {
+        match self.target {
+            CurrentTarget::NoTarget => return,
+            _ => (),
+        }
+        self.mouse_move(p);
+        self.target = CurrentTarget::NoTarget;
+        unsafe { (*self.render).mouse_up() };
+    }
+
     pub fn mouse_move(&mut self, p: &Point) {
         unsafe {
             let calc = (*self.render).calc();
