@@ -1,9 +1,9 @@
 use crate::{
+    Move, Point, Transform,
     bsp::PointLookupResult,
     link::{Bundle, Link},
     node::Node,
     renderer::Render,
-    Move, Point, Transform,
 };
 
 pub enum CurrentTarget {
@@ -22,11 +22,11 @@ pub struct Stater {
 }
 
 impl Stater {
-    pub fn wheel_up(&mut self) {
+    pub fn zoom_in(&mut self) {
         self.t.k -= self.wheel_move;
         self.render();
     }
-    pub fn wheel_down(&mut self) {
+    pub fn zoom_out(&mut self) {
         self.t.k += self.wheel_move;
         self.render();
     }
@@ -78,7 +78,7 @@ impl Stater {
         unsafe { (*self.render).mouse_down(&self.target) };
     }
 
-    pub fn mouse_out(&mut self, p: &Point) {
+    pub fn mouse_leave(&mut self, p: &Point) {
         match self.target {
             CurrentTarget::NoTarget => return,
             _ => (),

@@ -1,8 +1,9 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-mod img_loader;
-mod stater;
+pub mod img_loader;
+pub mod stater;
+pub mod targets;
 use wasm_bindgen::prelude::wasm_bindgen;
-use web_sys::{HtmlCanvasElement, HtmlDivElement, HtmlImageElement};
+use web_sys::HtmlImageElement;
 
 use crate::{
     ScreenBox, Transform,
@@ -10,6 +11,7 @@ use crate::{
     renderer::{
         img_loader::ImgLoader,
         stater::{CurrentTarget, Stater},
+        targets::Targets,
     },
 };
 
@@ -38,26 +40,6 @@ pub struct Render {
     cache: Option<ImgCache>,
     stater: Option<Stater>,
     targets: Option<Targets>,
-}
-
-pub struct Targets {
-    div: HtmlDivElement,
-    links: HtmlCanvasElement,
-    animations: HtmlCanvasElement,
-    nodes: HtmlCanvasElement,
-    highlight: HtmlCanvasElement,
-}
-
-impl Drop for Targets {
-    fn drop(&mut self) {
-        let div = &self.div;
-        for el in [&self.links, &self.nodes, &self.animations, &self.highlight] {
-            match div.remove_child(el) {
-                Ok(_) => (),
-                Err(_) => (),
-            }
-        }
-    }
 }
 
 #[wasm_bindgen]
