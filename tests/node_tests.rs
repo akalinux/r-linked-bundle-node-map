@@ -131,14 +131,35 @@ fn get_related_node_tests() {
         opt: 0,
         groups: Vec::from([0, 3]),
     });
-    nodes.group_add(0, &[1, 2]);
-    nodes.group_add(1, &[1, 3, 5]);
-    let mut iter = nodes.get_related(&[0]);
-    assert_eq!(iter.next().unwrap().id, 0);
-    assert_eq!(iter.next().unwrap().id, 3);
-    assert_eq!(iter.next().unwrap().id, 1);
-    assert!(iter.next().is_none());
+    let mut res = Vec::new();
+    for node in nodes.get_related(&[0, 1]) {
+        res.push(node.id);
+    }
+    res.sort();
+    assert_eq!(res, vec![0, 1, 3]);
     assert!(!nodes.nodes.is_empty());
+    nodes.remove(0);
+    res.clear();
+    for node in nodes.get_related(&[0, 1]) {
+        res.push(node.id);
+    }
+    assert_eq!(res, vec![1]);
+    nodes.insert(Node {
+        x: 0.0,
+        y: 0.0,
+        h: 2.0,
+        w: 2.0,
+        id: 0,
+        label: l.clone(),
+        opt: 0,
+        groups: Vec::from([0, 1]),
+    });
+    res.clear();
+    for node in nodes.get_related(&[0]) {
+        res.push(node.id);
+    }
+    res.sort();
+    assert_eq!(res, vec![0, 1, 3]);
 }
 
 #[test]

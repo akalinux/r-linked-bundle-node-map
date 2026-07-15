@@ -69,24 +69,28 @@ pub struct GetRelatedNodes<'n> {
     pub known_nodes: HashMap<u32, ()>,
     pub known_groups: HashMap<u32, ()>,
     pub todo: Vec<u32>,
+    base_nodes: HashMap<u32, ()>,
 }
 impl<'n> GetRelatedNodes<'n> {
     pub fn new(init: &[u32], nodes: &'n mut NodeStates) -> Self {
         let mut known_nodes = HashMap::with_capacity(init.len() * 2);
         let known_groups = HashMap::with_capacity(init.len() * 2);
         let mut todo = Vec::with_capacity(init.len() * 4);
+        let mut base_nodes = HashMap::with_capacity(init.len());
         for id in init {
             if known_nodes.contains_key(id) || nodes.get(*id).is_none() {
                 continue;
             }
             known_nodes.insert(*id, ());
-            todo.push(*id)
+            todo.push(*id);
+            base_nodes.insert(*id, ());
         }
         let mut res = Self {
             nodes,
             known_nodes,
             known_groups,
             todo,
+            base_nodes,
         };
         res.todo.reserve(init.len() * 2);
         return res;
@@ -104,6 +108,9 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
         let known_nodes = &mut self.known_nodes;
         let known_groups = &mut self.known_groups;
         let nodes = &self.nodes;
+        if !self.base_nodes.contains_key(&next) {
+            return Some(unsafe { mem::transmute(nodes.get(next).unwrap()) });
+        }
         let groups = &self.nodes.get(next).unwrap().groups;
         todo.reserve(groups.len());
         known_nodes.reserve(groups.len());
@@ -119,11 +126,12 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
                 Some(l) => list = l,
                 None => continue,
             }
-            for node_id in list {
+            for node_id in list.keys() {
                 if known_nodes.contains_key(node_id) || !self.nodes.nodes.contains_key(node_id) {
                     continue;
                 }
                 known_nodes.insert(*node_id, ());
+                // we do not want to step into nodes outside of the orginal list
                 todo.push(*node_id);
             }
         }
@@ -272,7 +280,7 @@ impl PointBox for Node {
 pub struct NodeStates {
     pub updates: HashMap<u32, Node>,
     pub nodes: HashMap<u32, Node>,
-    pub groups: HashMap<u32, Vec<u32>>,
+    pub groups: HashMap<u32, HashMap<u32, ()>>,
     pub center: Point,
 }
 
@@ -292,12 +300,6 @@ impl NodeStates {
         return GetRelatedNodes::new(node_ids, self);
     }
 
-    pub fn group_add(&mut self, id: u32, nodes: &[u32]) -> Option<Vec<u32>> {
-        self.groups.insert(id, Vec::from(nodes))
-    }
-    pub fn group_remove(&mut self, id: u32) -> Option<Vec<u32>> {
-        self.groups.remove(&id)
-    }
     pub fn new(size: usize) -> Self {
         return Self {
             updates: HashMap::new(),
@@ -325,14 +327,41 @@ impl NodeStates {
         return self.nodes.len();
     }
 
+    fn clear_node_grps(&mut self, node_id: u32, groups: &[u32]) {
+        for group in groups {
+            let rm;
+            if let Some(src) = self.groups.get_mut(group) {
+                src.remove(&node_id);
+                rm = src.is_empty()
+            } else {
+                rm = false;
+            }
+            if rm {
+                self.groups.remove(group);
+            }
+        }
+    }
+    fn append_node_grps(&mut self, node_id: u32, groups: &[u32]) {
+        for group in groups {
+            if let Some(g) = self.groups.get_mut(group) {
+                g.insert(node_id, ());
+            } else {
+                let g = HashMap::from([(node_id, ())]);
+                self.groups.insert(*group, g);
+            }
+        }
+    }
+
     pub fn insert(&mut self, node: Node) -> Option<Node> {
         let res = self.updates.remove(&node.id);
         if let Some(n) = res {
             self.center.x -= n.x;
             self.center.y -= n.y;
+            self.clear_node_grps(node.id, &n.groups);
         }
         self.center.x += node.x;
         self.center.y += node.y;
+        self.append_node_grps(node.id, &node.groups);
         return self.nodes.insert(node.id, node);
     }
 
@@ -343,6 +372,7 @@ impl NodeStates {
         if let Some(n) = &res {
             self.center.x -= n.x;
             self.center.y -= n.y;
+            self.clear_node_grps(n.id, &n.groups);
         }
         return res;
     }

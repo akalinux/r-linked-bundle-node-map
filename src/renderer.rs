@@ -2,12 +2,13 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 pub mod img_loader;
 pub mod stater;
 pub mod targets;
-use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use web_sys::HtmlImageElement;
 
 use crate::{
     ScreenBox, Transform,
     calc::Calculator,
+    constants::{DEFAULT_CANVAS_STYLE, DEFAULT_DIV_STYLE, DEFAULT_HOVER_TIMEOUT},
     renderer::{
         img_loader::ImgLoader,
         stater::{CurrentTarget, Stater},
@@ -40,12 +41,13 @@ pub struct Render {
     cache: Option<ImgCache>,
     stater: Option<Stater>,
     targets: Option<Targets>,
+    id: String,
 }
 
 #[wasm_bindgen]
 impl Render {
     #[wasm_bindgen(constructor)]
-    pub fn new(calc: &mut Calculator, width: u32, height: u32) -> Self {
+    pub fn new(calc: &mut Calculator, width: u32, height: u32, id: String) -> Self {
         let screen_res = ScreenBox {
             width,
             height,
@@ -54,6 +56,7 @@ impl Render {
             step: calc.indexer().step,
         };
         let res = Self {
+            id,
             calc: calc as *mut Calculator,
             screen_res,
             cache: None,
@@ -68,8 +71,43 @@ impl Render {
         self.stater().t = t.clone();
     }
     pub fn render(&mut self) {}
+    pub fn mount(&mut self, element_id: String) -> Result<(), JsValue> {
+        self.mount_with_options(
+            element_id,
+            String::from(DEFAULT_DIV_STYLE),
+            String::from(DEFAULT_CANVAS_STYLE),
+        )
+    }
+    pub fn mount_with_options(
+        &mut self,
+        element_id: String,
+        div_style: String,
+        canvas_style: String,
+    ) -> Result<(), JsValue> {
+        let stater;
+        if let Some(s) = &mut self.stater {
+            stater = s as *mut Stater
+        } else {
+            return Err(JsValue::from_str("No Stater ready!"));
+        }
+        // people do dumb things!
+        // be nice and clean up the old instance!
+        self.targets = None;
+        let targets = Targets::new(stater, element_id, div_style, canvas_style)?;
+        self.targets = Some(targets);
+        Ok(())
+    }
+    pub fn unmount(&mut self) {
+        self.targets = None;
+    }
 }
 impl Render {
+    pub fn get_id(&self) -> &String {
+        &self.id
+    }
+    pub fn get_screenbox(&self) -> &ScreenBox {
+        &self.screen_res
+    }
     pub fn cache<'c>(&'c mut self) -> &'c mut ImgCache {
         if self.cache.is_none() {
             return self.build_cache();
@@ -77,9 +115,10 @@ impl Render {
         return self.cache.as_mut().unwrap();
     }
 
-    pub fn mouse_up(&mut self) {}
-    pub fn mouse_down(&mut self, ct: &CurrentTarget) {}
-    pub fn mouse_over(&mut self, ct: &CurrentTarget) {}
+    // todo need to implement these!
+    pub fn mouse_up(&mut self, _ct: &CurrentTarget) {}
+    pub fn mouse_down(&mut self, _ct: &CurrentTarget) {}
+    pub fn mouse_over(&mut self, _ct: &CurrentTarget) {}
 
     pub fn calc(&self) -> *mut Calculator {
         return self.calc;
@@ -89,7 +128,7 @@ impl Render {
         if self.stater.is_none() {
             unsafe {
                 let s = self as *mut Self;
-                let stater = Stater::new(s);
+                let stater = Stater::new(s, DEFAULT_HOVER_TIMEOUT);
                 (*s).stater = Some(stater);
             }
         }
@@ -105,9 +144,7 @@ impl Render {
         }
     }
 
-    pub fn img_resolved(&mut self, _src: &String, _state: ImgLookupState, _loading: u32) {
-        todo!("Need to implement this!")
-    }
+    pub fn img_resolved(&mut self, src: &String, state: ImgLookupState, loading: u32) {}
 }
 
 impl Drop for ImgCache {

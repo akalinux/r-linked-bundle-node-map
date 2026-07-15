@@ -9,9 +9,8 @@ pastey = "0.2.3"
 js-sys = "0.3.103"
 web-sys = { 
     version="0.3.103", features = [
-        'AddEventListenerOptions',
-        'EventListenerOptions',
         'CanvasRenderingContext2d',
+        'CssStyleDeclaration',
         'Document',
         'DomRect',
         'Element', 
@@ -22,11 +21,13 @@ web-sys = {
         "HtmlImageElement",
         "HtmlDivElement",
         'MouseEvent',
+        'Node',
         'Window',
-        
+       "ResizeObserver", "ResizeObserverEntry" 
     ] 
 }
-gloo = "0.12.0"
+gloo ={ version="0.12.0",features=['timers']}
+wasm-bindgen-futures = "0.4.76"
 
 
 [dev-dependencies]

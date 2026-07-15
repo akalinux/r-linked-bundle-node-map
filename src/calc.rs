@@ -188,8 +188,53 @@ calc_bulk!(BunldeOpt, bundle);
 impl CalculatorTrait for Calculator {}
 
 impl Calculator {
+    pub fn move_nodes(&mut self, node_ids: &[u32], p: &Point, use_groups: bool) {
+        let idx = &mut self.indexer;
+
+        let mut ls = HashMap::new();
+        let nl = &self.links.node_links;
+        if use_groups {
+            let mut known = HashMap::with_capacity(node_ids.len());
+            for id in node_ids {
+                if known.contains_key(id) {
+                    continue;
+                }
+                known.insert(*id, ());
+                let node;
+                match self.nodes.get(*id) {
+                    Some(src) => node = Self::node_updates(idx, p, src, nl, &mut ls),
+                    None => continue,
+                };
+                self.nodes.update(node);
+            }
+        } else {
+            let mut iter = self.nodes.get_related(node_ids);
+            loop {
+                let src;
+                match iter.next() {
+                    Some(n) => src = n,
+                    _ => break,
+                };
+                iter.nodes
+                    .update(Self::node_updates(idx, p, src, nl, &mut ls));
+            }
+        }
+
+        let nodes = &self.nodes;
+        let options = &mut self.options;
+        let animations = &mut self.animations;
+        for lid in ls.keys() {
+            let link = self.links.get_mut(&lid).unwrap();
+            link.update(nodes, options, animations);
+            idx.index(ScreenSlot::Link(*lid), link.screen_index(idx.step, true));
+        }
+    }
     pub fn on_screen<'s>(&'s self, width: u32, height: u32, t: &Transform) -> OnScreen<'s> {
         self.indexer.on_screen(width, height, t)
+    }
+    pub fn default_screen_block(&self) -> ScreenBox {
+        let step = self.indexer.step;
+        ScreenBox::new(&ZERO_TRANSFORM, step as u32, step as u32, step)
     }
 
     pub unsafe fn get_src_dst_center(&self, src: u32, dst: u32) -> Point {
@@ -200,15 +245,39 @@ impl Calculator {
             y: (a.y + b.y) * 0.5,
         }
     }
+    fn node_updates(
+        idx: &mut ScreenIndex,
+        p: &Point,
+        src: &Node,
+        nl: &HashMap<u32, HashMap<u64, ()>>,
+        ls: &mut HashMap<u64, ()>,
+    ) -> Node {
+        let node = src.transform(p.x, p.y, 0.0, 0.0);
+        idx.index(
+            ScreenSlot::Node(src.id),
+            (
+                Some(src.index_bound(idx.step)),
+                Some(node.index_bound(idx.step)),
+            ),
+        );
+        match nl.get(&src.id) {
+            Some(l) => {
+                ls.reserve(l.len());
+                for i in l.keys() {
+                    if !ls.contains_key(i) {
+                        ls.insert(*i, ());
+                    }
+                }
+            }
+            _ => (),
+        };
+        node
+    }
 }
 #[wasm_bindgen]
 impl Calculator {
     pub fn current_screen(&self) -> Option<ScreenBox> {
         self.indexer.max_screen()
-    }
-    pub fn default_screen_block(&self) -> ScreenBox {
-        let step = self.indexer.step;
-        ScreenBox::new(&ZERO_TRANSFORM, step as u32, step as u32, step)
     }
 
     pub fn wanted_screens(&self, width: u32, height: u32, t: &Transform) -> Vec<ScreenBox> {
@@ -387,14 +456,6 @@ impl Calculator {
         );
     }
 
-    pub fn group_add(&mut self, id: u32, nodes: &[u32]) -> Option<Vec<u32>> {
-        return self.nodes.group_add(id, nodes);
-    }
-
-    pub fn group_remove(&mut self, id: u32) -> Option<Vec<u32>> {
-        return self.nodes.group_remove(id);
-    }
-
     pub fn bundle_add(&mut self, bundle: Bundle) {
         self.links.bundle_add(
             bundle,
@@ -408,50 +469,5 @@ impl Calculator {
 
     pub fn in_point(&self, p: &Point, t: &Transform) -> Option<PointLookupResult> {
         self.indexer.in_point(p, t, &self.nodes, &self.links)
-    }
-    pub fn move_nodes(&mut self, node_ids: &[u32], p: &Point) {
-        let idx = &mut self.indexer;
-        let mut ns = Vec::with_capacity(node_ids.len() * 2);
-        let mut iter = self.nodes.get_related(node_ids);
-
-        let mut ls = HashMap::new();
-        let nl = &self.links.node_links;
-        loop {
-            let src;
-            match iter.next() {
-                Some(n) => src = n,
-                _ => break,
-            }
-            ns.push(src.id);
-            let node = src.transform(p.x, p.y, 0.0, 0.0);
-            idx.index(
-                ScreenSlot::Node(src.id),
-                (
-                    Some(src.index_bound(idx.step)),
-                    Some(node.index_bound(idx.step)),
-                ),
-            );
-            iter.nodes.update(node);
-            match nl.get(&src.id) {
-                Some(l) => {
-                    ls.reserve(l.len());
-                    for i in l.keys() {
-                        if !ls.contains_key(i) {
-                            ls.insert(*i, ());
-                        }
-                    }
-                }
-                _ => (),
-            }
-        }
-
-        let nodes = &self.nodes;
-        let options = &mut self.options;
-        let animations = &mut self.animations;
-        for lid in ls.keys() {
-            let link = self.links.get_mut(&lid).unwrap();
-            link.update(nodes, options, animations);
-            idx.index(ScreenSlot::Link(*lid), link.screen_index(idx.step, true));
-        }
     }
 }

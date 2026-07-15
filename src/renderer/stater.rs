@@ -5,6 +5,7 @@ use crate::{
     node::Node,
     renderer::Render,
 };
+use gloo::timers::callback::Timeout;
 
 pub enum CurrentTarget {
     Node((Move, Node)),
@@ -15,10 +16,12 @@ pub enum CurrentTarget {
 }
 
 pub struct Stater {
-    render: *mut Render,
+    pub render: *mut Render,
     pub target: CurrentTarget,
     pub t: Transform,
     pub wheel_move: f64,
+    timeout_value: u32,
+    current_timeout: Option<Timeout>,
 }
 
 impl Stater {
@@ -69,8 +72,8 @@ impl Stater {
 
     pub fn mouse_up(&mut self, p: &Point) {
         self.mouse_move(p);
+        unsafe { (*self.render).mouse_up(&self.target) };
         self.target = CurrentTarget::NoTarget;
-        unsafe { (*self.render).mouse_up() };
     }
 
     pub fn mouse_down(&mut self, p: &Point) {
@@ -78,33 +81,40 @@ impl Stater {
         unsafe { (*self.render).mouse_down(&self.target) };
     }
 
-    pub fn mouse_leave(&mut self, p: &Point) {
-        match self.target {
-            CurrentTarget::NoTarget => return,
-            _ => (),
-        }
-        self.mouse_move(p);
+    pub fn mouse_leave(&mut self, _p: &Point) {
+        self.current_timeout = None;
         self.target = CurrentTarget::NoTarget;
-        unsafe { (*self.render).mouse_up() };
     }
 
+    pub fn render_highlight(&mut self, p: &Point) {}
     pub fn mouse_move(&mut self, p: &Point) {
         unsafe {
             let calc = (*self.render).calc();
 
+            self.current_timeout = None;
             match &mut self.target {
-                CurrentTarget::NoTarget => return,
+                CurrentTarget::NoTarget => {
+                    let this = self as *mut Stater;
+                    let p = *p;
+                    self.current_timeout = Some(Timeout::new(self.timeout_value, move || {
+                        #[allow(unused_unsafe)]
+                        unsafe {
+                            (*this).render_highlight(&p)
+                        }
+                    }));
+                    return;
+                }
                 CurrentTarget::Bundle((m, b)) => {
                     m.transform = self.t;
-                    (*calc).move_nodes(&[b.src, b.dst], &m.stop(p))
+                    (*calc).move_nodes(&[b.src, b.dst], &m.stop(p), false)
                 }
                 CurrentTarget::Link((m, l)) => {
                     m.transform = self.t;
-                    (*calc).move_nodes(&[l.src, l.dst], &m.stop(p))
+                    (*calc).move_nodes(&[l.src, l.dst], &m.stop(p), false)
                 }
                 CurrentTarget::Node((m, n)) => {
                     m.transform = self.t;
-                    (*calc).move_nodes(&[n.id], &m.stop(p))
+                    (*calc).move_nodes(&[n.id], &m.stop(p), true)
                 }
                 CurrentTarget::Screen(m) => {
                     m.transform = self.t;
@@ -123,11 +133,13 @@ impl Stater {
             (*self.render).render();
         }
     }
-    pub fn new(render: *mut Render) -> Self {
+    pub fn new(render: *mut Render, timeout_value: u32) -> Self {
         Self {
             render,
             wheel_move: 0.05,
             target: CurrentTarget::NoTarget,
+            current_timeout: None,
+            timeout_value,
             t: Transform {
                 x: 0.0,
                 y: 0.0,

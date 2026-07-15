@@ -23,11 +23,16 @@ pub const DEFAULT_OPT_NAME: &'static str = "defaults";
 pub const DEFAULT_COLOR: &'static str = "#00828A";
 // Default color used for bundles
 pub const DEFAULT_BUNDLE_COLOR: &'static str = "#e18f38";
+pub const DEFAULT_HOVER_TIMEOUT: u32 = 300;
 
 // default animation color
 pub const DEFAULT_ANIMATION_COLOR: &'static str = "#9319cc";
 pub const DEFAULT_HIGHLIGHT_COLOR: &'static str = "#d4d4d468";
+pub const DEFAULT_DIV_STYLE: &'static str =
+    "position: relative; height: 100%;widht: 100%;box-sizing: border-box;overflow: clip;";
 
+pub const DEFAULT_CANVAS_STYLE: &'static str =
+    "position: absolute;box-sizing: border-box;overflow: clip;";
 pub const DEFAULT_ANIMATION_DASHES: [f64; 2] = [5.0, 15.0];
 pub const DEFAULT_ANIMATION_WIDTH_SCALE: f64 = 1.0 / 3.0;
 
