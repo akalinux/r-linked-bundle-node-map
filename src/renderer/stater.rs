@@ -9,6 +9,7 @@ use gloo::timers::callback::Timeout;
 
 pub enum CurrentTarget {
     Node((Move, Node)),
+    Box((Move, Node)),
     Screen(Move),
     Link((Move, Link)),
     Bundle((Move, Bundle)),
@@ -55,6 +56,10 @@ impl Stater {
                     CurrentTarget::Link((m, l))
                 }
                 PointLookupResult::Node(n) => {
+                    m.center(&n.get_center());
+                    CurrentTarget::Node((m, n))
+                }
+                PointLookupResult::Box(n) => {
                     m.center(&n.get_center());
                     CurrentTarget::Node((m, n))
                 }
@@ -113,6 +118,10 @@ impl Stater {
                     (*calc).move_nodes(&[l.src, l.dst], &m.stop(p), false)
                 }
                 CurrentTarget::Node((m, n)) => {
+                    m.transform = self.t;
+                    (*calc).move_nodes(&[n.id], &m.stop(p), true)
+                }
+                CurrentTarget::Box((m, n)) => {
                     m.transform = self.t;
                     (*calc).move_nodes(&[n.id], &m.stop(p), true)
                 }

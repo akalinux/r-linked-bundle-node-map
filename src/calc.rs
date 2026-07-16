@@ -6,19 +6,19 @@ use crate::{
     node::{Node, NodeOpt, NodeStates},
 };
 use pastey::paste;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 use wasm_bindgen::prelude::*;
 
 pub struct BacklogUpdates {
-    pub nodes: HashMap<u32, ()>,
-    pub links: HashMap<u64, ()>,
+    pub nodes: HashSet<u32>,
+    pub links: HashSet<u64>,
 }
 impl BacklogUpdates {
     pub fn new(size: usize) -> Self {
         return Self {
-            nodes: HashMap::with_capacity(size),
-            links: HashMap::with_capacity(size),
+            nodes: HashSet::with_capacity(size),
+            links: HashSet::with_capacity(size),
         };
     }
 
@@ -79,6 +79,7 @@ pub struct BulkLoad {
     pub node_ops: Vec<NodeOpt>,
     pub lc_ops: Vec<LinkContainerOpt>,
     pub nodes: Vec<Node>,
+    pub boxes: Vec<Node>,
     pub links: Vec<Link>,
     pub bundles: Vec<Bundle>,
 }
@@ -92,6 +93,7 @@ impl BulkLoad {
         node_ops: Vec<NodeOpt>,
         lc_ops: Vec<LinkContainerOpt>,
         nodes: Vec<Node>,
+        boxes: Vec<Node>,
         links: Vec<Link>,
         bundles: Vec<Bundle>,
     ) -> Self {
@@ -100,6 +102,7 @@ impl BulkLoad {
             node_ops,
             lc_ops,
             nodes,
+            boxes,
             link_opts,
             links,
             bundles,
@@ -112,6 +115,7 @@ impl BulkLoad {
             Vec::new(),
             Vec::new(),
             nodes,
+            Vec::new(),
             links,
             bundles,
         )
@@ -137,7 +141,7 @@ pub struct Calculator {
     links: LinkStates,
     nodes: NodeStates,
     backlog: BacklogUpdates,
-    animations: HashMap<u64, ()>,
+    animations: HashSet<u64>,
     options: Options,
     indexer: ScreenIndex,
 }
@@ -161,7 +165,7 @@ macro_rules! calc_acl {
 calc_acl!(nodes, NodeStates);
 calc_acl!(links, LinkStates);
 calc_acl!(backlog, BacklogUpdates);
-calc_acl!(animations, HashMap<u64,()>);
+calc_acl!(animations, HashSet<u64>);
 calc_acl!(options, Options);
 calc_acl!(indexer, ScreenIndex);
 
@@ -191,15 +195,15 @@ impl Calculator {
     pub fn move_nodes(&mut self, node_ids: &[u32], p: &Point, use_groups: bool) {
         let idx = &mut self.indexer;
 
-        let mut ls = HashMap::new();
+        let mut ls = HashSet::new();
         let nl = &self.links.node_links;
         if use_groups {
-            let mut known = HashMap::with_capacity(node_ids.len());
+            let mut known = HashSet::with_capacity(node_ids.len());
             for id in node_ids {
-                if known.contains_key(id) {
+                if known.contains(id) {
                     continue;
                 }
-                known.insert(*id, ());
+                known.insert(*id);
                 let node;
                 match self.nodes.get(*id) {
                     Some(src) => node = Self::node_updates(idx, p, src, nl, &mut ls),
@@ -223,7 +227,7 @@ impl Calculator {
         let nodes = &self.nodes;
         let options = &mut self.options;
         let animations = &mut self.animations;
-        for lid in ls.keys() {
+        for lid in ls.iter() {
             let link = self.links.get_mut(&lid).unwrap();
             link.update(nodes, options, animations);
             idx.index(ScreenSlot::Link(*lid), link.screen_index(idx.step, true));
@@ -249,8 +253,8 @@ impl Calculator {
         idx: &mut ScreenIndex,
         p: &Point,
         src: &Node,
-        nl: &HashMap<u32, HashMap<u64, ()>>,
-        ls: &mut HashMap<u64, ()>,
+        nl: &HashMap<u32, HashSet<u64>>,
+        ls: &mut HashSet<u64>,
     ) -> Node {
         let node = src.transform(p.x, p.y, 0.0, 0.0);
         idx.index(
@@ -263,9 +267,9 @@ impl Calculator {
         match nl.get(&src.id) {
             Some(l) => {
                 ls.reserve(l.len());
-                for i in l.keys() {
-                    if !ls.contains_key(i) {
-                        ls.insert(*i, ());
+                for i in l.iter() {
+                    if !ls.contains(i) {
+                        ls.insert(*i);
                     }
                 }
             }
@@ -307,7 +311,7 @@ impl Calculator {
     pub fn new_with_settings(screen_mouse_b: i64, size: usize) -> Self {
         return Self {
             links: LinkStates::new(),
-            animations: HashMap::with_capacity(size),
+            animations: HashSet::with_capacity(size),
             nodes: NodeStates::new(size),
             backlog: BacklogUpdates::new(size),
             indexer: ScreenIndex::new(screen_mouse_b),
@@ -345,6 +349,9 @@ impl Calculator {
             self.bundle_add(bundle);
         }
 
+        for b in bl.boxes {
+            self.box_add(b);
+        }
         self.finish_bulk_load();
     }
 
@@ -355,7 +362,7 @@ impl Calculator {
     pub fn finish_bulk_load(&mut self) {
         self.links.bulk = false;
         self.links.bulk_update(
-            self.backlog.links.keys(),
+            self.backlog.links.iter(),
             &self.nodes,
             &mut self.options,
             &mut self.animations,
@@ -377,7 +384,30 @@ impl Calculator {
         let screen_b: i64 = link_b * 4;
         return Self::new_with_settings(screen_b, 256);
     }
+    pub fn box_add(&mut self, node: Node) -> Option<Node> {
+        let new = Some(node.index_bound(self.indexer.step));
+        let id = node.id;
+        let res = self.nodes.insert_box(node);
+        let old;
+        match &res {
+            Some(o) => old = Some(o.index_bound(self.indexer.step)),
+            None => old = None,
+        };
+        self.indexer.index(ScreenSlot::Box(id), (old, new));
 
+        res
+    }
+
+    pub fn box_remove(&mut self, id: u32) -> Option<Node> {
+        let res = self.nodes.remove_box(id);
+        if let Some(node) = &res {
+            self.indexer.index(
+                ScreenSlot::Box(id),
+                (Some(node.index_bound(self.indexer.step)), None),
+            );
+        }
+        res
+    }
     pub fn node_add(&mut self, node: Node) -> Option<Node> {
         let old;
         match self.nodes.get(node.id) {

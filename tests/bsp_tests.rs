@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use linked_bundle_node_map::{
     PointBox, ScreenBox, Transform,
@@ -60,21 +60,21 @@ fn screen_idx_iter_tests() {
         y: 5,
         step: 5,
     };
-    assert_eq!(iter.next(), Some((vec![0], Vec::new(), screena,)));
+    assert_eq!(iter.next(), Some((vec![0], Vec::new(), vec![], screena,)));
     assert!(iter.next().is_none());
     idx.index(
         ScreenSlot::Node(dst.id),
         (None, Some(dst.index_bound(idx.step))),
     );
     iter = idx.on_screen(10, 10, &t);
-    assert_eq!(iter.next(), Some((vec![0], Vec::new(), screena)));
-    assert_eq!(iter.next(), Some((vec![1], Vec::new(), screend)));
+    assert_eq!(iter.next(), Some((vec![0], Vec::new(), vec![], screena)));
+    assert_eq!(iter.next(), Some((vec![1], Vec::new(), vec![], screend)));
     assert!(iter.next().is_none());
     let mut ns = NodeStates::new(2);
     ns.insert(src.clone());
     ns.insert(dst.clone());
     let mut opts = Options::new();
-    let mut animations = HashMap::new();
+    let mut animations = HashSet::new();
     let mut link = LinkContainer::new(0, 1);
 
     link.link_add(Link {
@@ -88,13 +88,16 @@ fn screen_idx_iter_tests() {
     link.update(&mut ns, &mut opts, &mut animations);
     idx.index(ScreenSlot::Link(link.id), link.screen_index(idx.step, true));
     iter = idx.on_screen(10, 10, &t);
-    assert_eq!(iter.next(), Some((vec![0], vec![link.id], screena)));
-    assert_eq!(iter.next(), Some((vec![1], Vec::new(), screend)));
+    assert_eq!(iter.next(), Some((vec![0], vec![link.id], vec![], screena)));
+    assert_eq!(iter.next(), Some((vec![1], Vec::new(), vec![], screend)));
     assert!(iter.next().is_none());
 
     t.x = -5.0;
     iter = idx.on_screen(5, 5, &t);
-    assert_eq!(iter.next(), Some((Vec::new(), vec![link.id], screenb)));
+    assert_eq!(
+        iter.next(),
+        Some((Vec::new(), vec![link.id], vec![], screenb))
+    );
     assert!(iter.next().is_none());
     idx.index(
         ScreenSlot::Link(link.id),

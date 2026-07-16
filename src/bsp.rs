@@ -6,7 +6,7 @@ use crate::{
     node::{Node, NodeStates},
 };
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashSet},
     mem,
     ops::RangeInclusive,
 };
@@ -16,15 +16,17 @@ pub type IndexPart = Option<IndexXY>;
 pub type IndexSet = (IndexPart, IndexPart);
 
 pub struct ScreenBoundY {
-    pub nodes: BTreeMap<u32, ()>,
-    pub links: BTreeMap<u64, ()>,
+    pub nodes: BTreeSet<u32>,
+    pub boxes: BTreeSet<u32>,
+    pub links: BTreeSet<u64>,
 }
 
 impl ScreenBoundY {
     pub fn new() -> Self {
         Self {
-            nodes: BTreeMap::new(),
-            links: BTreeMap::new(),
+            nodes: BTreeSet::new(),
+            boxes: BTreeSet::new(),
+            links: BTreeSet::new(),
         }
     }
     pub fn is_empty(&self) -> bool {
@@ -32,14 +34,16 @@ impl ScreenBoundY {
     }
     pub fn add(&mut self, t: &ScreenSlot) {
         match t {
-            ScreenSlot::Link(l) => self.links.insert(*l, ()),
-            ScreenSlot::Node(n) => self.nodes.insert(*n, ()),
+            ScreenSlot::Link(l) => self.links.insert(*l),
+            ScreenSlot::Node(n) => self.nodes.insert(*n),
+            ScreenSlot::Box(n) => self.boxes.insert(*n),
         };
     }
     pub fn remove(&mut self, t: &ScreenSlot) {
         match t {
             ScreenSlot::Link(l) => self.links.remove(l),
             ScreenSlot::Node(n) => self.nodes.remove(n),
+            ScreenSlot::Box(n) => self.boxes.remove(n),
         };
     }
 }
@@ -180,13 +184,14 @@ pub struct OnScreen<'s> {
     y: RangeInclusive<i64>,
     cx: i64,
     cy: i64,
-    next: Option<(Vec<u32>, Vec<u64>, ScreenBox)>,
-    known_nodes: HashMap<u32, ()>,
-    known_links: HashMap<u64, ()>,
+    next: Option<(Vec<u32>, Vec<u64>, Vec<u32>, ScreenBox)>,
+    known_nodes: HashSet<u32>,
+    known_links: HashSet<u64>,
+    known_boxes: HashSet<u32>,
 }
 
 impl<'s> Iterator for OnScreen<'s> {
-    type Item = (Vec<u32>, Vec<u64>, ScreenBox);
+    type Item = (Vec<u32>, Vec<u64>, Vec<u32>, ScreenBox);
     fn next(&mut self) -> Option<Self::Item> {
         if self.next.is_none() {
             return None;
@@ -209,30 +214,44 @@ impl<'s> Iterator for OnScreen<'s> {
                     Some(idy) => {
                         let kl = &mut self.known_links;
                         let kn = &mut self.known_nodes;
+                        let kb = &mut self.known_boxes;
                         kl.reserve(idy.links.len());
                         kn.reserve(idy.nodes.len());
                         let mut links = Vec::with_capacity(idy.links.len());
                         let mut nodes = Vec::with_capacity(idy.nodes.len());
-                        for lid in idy.links.keys() {
-                            if kl.contains_key(lid) {
+                        let mut boxes = Vec::with_capacity(idy.boxes.len());
+                        for lid in idy.links.iter() {
+                            if kl.contains(lid) {
                                 continue;
                             }
-                            kl.insert(*lid, ());
+                            kl.insert(*lid);
                             links.push(*lid);
                         }
-                        for id in idy.nodes.keys() {
-                            if kn.contains_key(id) {
+                        for id in idy.nodes.iter() {
+                            if kn.contains(id) {
                                 continue;
                             }
-                            kn.insert(*id, ());
+                            kn.insert(*id);
                             nodes.push(*id);
+                        }
+                        for id in idy.boxes.iter() {
+                            if kn.contains(id) {
+                                continue;
+                            }
+                            kb.insert(*id);
+                            boxes.push(*id);
                         }
                         if nodes.is_empty() && links.is_empty() {
                             continue;
                         }
                         return mem::replace(
                             &mut self.next,
-                            Some((nodes, links, ScreenBox::from_step(x, y, self.idx.step))),
+                            Some((
+                                nodes,
+                                links,
+                                boxes,
+                                ScreenBox::from_step(x, y, self.idx.step),
+                            )),
                         );
                     }
                     _ => (),
@@ -256,8 +275,9 @@ impl<'s> OnScreen<'s> {
             None => return Self::no_screen(idx),
         }
         let (x, y) = view.getxy_bounds();
-        let known_nodes = HashMap::new();
-        let known_links = HashMap::new();
+        let known_nodes = HashSet::new();
+        let known_links = HashSet::new();
+        let known_boxes = HashSet::new();
         let mut res = Self {
             idx,
             cx: *x.start(),
@@ -266,7 +286,8 @@ impl<'s> OnScreen<'s> {
             y,
             known_links,
             known_nodes,
-            next: Some((Vec::new(), Vec::new(), ScreenBox::empty())),
+            known_boxes,
+            next: Some((Vec::new(), Vec::new(), Vec::new(), ScreenBox::empty())),
         };
         // need our first pass to ensure the data is populated.
         res.next();
@@ -281,14 +302,16 @@ impl<'s> OnScreen<'s> {
             cy: 0,
             cx: 0,
             next: None,
-            known_links: HashMap::new(),
-            known_nodes: HashMap::new(),
+            known_links: HashSet::new(),
+            known_nodes: HashSet::new(),
+            known_boxes: HashSet::new(),
         }
     }
 }
 
 pub enum ScreenSlot {
     Node(u32),
+    Box(u32),
     Link(u64),
 }
 
@@ -296,6 +319,7 @@ pub enum ScreenSlot {
 #[derive(Debug, PartialEq)]
 pub enum PointLookupResult {
     Node(Node),
+    Box(Node),
     Link(Link),
     Bundle(Bundle),
 }
@@ -319,17 +343,22 @@ impl ScreenIndex {
         if let Some(y) = self.x.get(&ip.0)
             && let Some(r) = y.get(&ip.1)
         {
-            for node_id in r.nodes.keys() {
+            for node_id in r.nodes.iter() {
                 if let Some(node) = n.node_in_point(*node_id, &tp) {
                     return Some(PointLookupResult::Node(node));
                 }
             }
-            for link_id in r.links.keys() {
+            for link_id in r.links.iter() {
                 if let Some(r) = l.link_contains_point(*link_id, p) {
                     match r {
                         LinkContainsType::Bundle(b) => return Some(PointLookupResult::Bundle(b)),
                         LinkContainsType::Link(l) => return Some(PointLookupResult::Link(l)),
                     }
+                }
+            }
+            for node_id in r.boxes.iter() {
+                if let Some(node) = n.node_in_point(*node_id, &tp) {
+                    return Some(PointLookupResult::Box(node));
                 }
             }
         }

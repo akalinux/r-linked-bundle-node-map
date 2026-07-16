@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use linked_bundle_node_map::{
     CalculatorTrait, GetCenter, Point,
@@ -272,7 +272,7 @@ fn point_inside_tests() {
     ns.insert(src.clone());
     ns.insert(dst.clone());
     let mut ops = Options::new();
-    let mut animations = HashMap::new();
+    let mut animations = HashSet::new();
     let mut lc = LinkContainer::new(src.id, dst.id);
     let link = Link::new(0, 0, 1, 0, Animation::None, String::from("This is a test"));
     lc.link_add(link.clone());

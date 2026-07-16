@@ -99,6 +99,7 @@ fn bulk_load_tests() {
             Some((
                 vec![0, 1],
                 vec![link.clone().get_container_id(),],
+                vec![],
                 ScreenBox {
                     width: 768,
                     height: 768,
@@ -122,6 +123,7 @@ fn bulk_load_tests() {
             iter.next(),
             Some((
                 vec![0, 1],
+                vec![],
                 vec![],
                 ScreenBox {
                     width: 768,

@@ -1,4 +1,7 @@
-use std::{collections::HashMap, mem};
+use std::{
+    collections::{HashMap, HashSet},
+    mem,
+};
 
 use wasm_bindgen::prelude::*;
 
@@ -18,9 +21,9 @@ pub struct LinkStates {
     pub bulk: bool,
     pub links: HashMap<u64, LinkContainer>,
     pub updates: HashMap<u64, LinkContainer>,
-    pub node_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Node instances to LinkContainer instances
-    pub bundle_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Bundle instances to LinkContainer instances
-    pub link_links: HashMap<u32, HashMap<u64, ()>>, // mapping of Link instances to LinkContainer instances
+    pub node_links: HashMap<u32, HashSet<u64>>, // mapping of Node instances to LinkContainer instances
+    pub bundle_links: HashMap<u32, HashSet<u64>>, // mapping of Bundle instances to LinkContainer instances
+    pub link_links: HashMap<u32, HashSet<u64>>, // mapping of Link instances to LinkContainer instances
 }
 
 impl LinkStates {
@@ -63,7 +66,7 @@ impl LinkStates {
         updates: impl Iterator<Item = &'l u64>,
         nodes: &NodeStates,
         ops: &mut Options,
-        animations: &mut HashMap<u64, ()>,
+        animations: &mut HashSet<u64>,
         idx: &mut ScreenIndex,
     ) {
         for lid in updates {
@@ -91,12 +94,12 @@ impl LinkStates {
         idx: &mut ScreenIndex,
         nodes: &NodeStates,
         ops: &mut Options,
-        animations: &mut HashMap<u64, ()>,
+        animations: &mut HashSet<u64>,
         backlog: &mut BacklogUpdates,
     ) {
         match self.node_links.get(&node_id) {
             Some(nl) => {
-                for i in nl.keys() {
+                for i in nl.iter() {
                     let lc;
                     if let Some(l) = self.updates.get_mut(i) {
                         lc = l;
@@ -106,7 +109,7 @@ impl LinkStates {
                         continue;
                     }
                     if self.bulk {
-                        backlog.links.insert(*i, ());
+                        backlog.links.insert(*i);
                     } else {
                         lc.update(nodes, ops, animations);
                         idx.index(ScreenSlot::Link(*i), lc.screen_index(idx.step, true));
@@ -125,7 +128,7 @@ impl LinkStates {
                 Some(nl) => {
                     if add {
                         empty = false;
-                        nl.insert(id, ());
+                        nl.insert(id);
                     } else {
                         nl.remove(&id);
                         empty = nl.is_empty()
@@ -226,11 +229,11 @@ impl LinkStates {
         match add {
             true => match cross.get_mut(&id) {
                 Some(l) => {
-                    l.insert(lid, ());
+                    l.insert(lid);
                     empty = false;
                 }
                 None => {
-                    cross.insert(id, HashMap::from([(lid, ())]));
+                    cross.insert(id, HashSet::from([lid]));
                     empty = false;
                 }
             },
@@ -254,7 +257,7 @@ impl LinkStates {
         link: Link,
         nodes: &NodeStates,
         ops: &mut Options,
-        animations: &mut HashMap<u64, ()>,
+        animations: &mut HashSet<u64>,
         idx: &mut ScreenIndex,
         backlog: &mut BacklogUpdates,
     ) -> &'l mut LinkContainer {
@@ -267,7 +270,7 @@ impl LinkStates {
             .unwrap();
         lc.link_add(link);
         if bulk {
-            backlog.links.insert(id, ());
+            backlog.links.insert(id);
         } else {
             lc.update(nodes, ops, animations);
             idx.index(ScreenSlot::Link(id), lc.screen_index(idx.step, true));
@@ -279,7 +282,7 @@ impl LinkStates {
         id: u32,
         nodes: &NodeStates,
         ops: &mut Options,
-        animations: &mut HashMap<u64, ()>,
+        animations: &mut HashSet<u64>,
         idx: &mut ScreenIndex,
         backlog: &mut BacklogUpdates,
     ) {
@@ -290,7 +293,7 @@ impl LinkStates {
         } else {
             return;
         }
-        for lid in links.keys() {
+        for lid in links.iter() {
             let src;
             let dst;
 
@@ -304,7 +307,7 @@ impl LinkStates {
             let mut rm = None;
             self.manage(*lid, false, &mut rm);
             if bulk {
-                backlog.links.insert(*lid, ());
+                backlog.links.insert(*lid);
             } else {
                 if let Some(lc) = rm {
                     idx.index(ScreenSlot::Link(lc.id), (lc.screen_index.clone(), None));
@@ -359,7 +362,7 @@ impl LinkStates {
         bunlde: Bundle,
         nodes: &NodeStates,
         ops: &mut Options,
-        animations: &mut HashMap<u64, ()>,
+        animations: &mut HashSet<u64>,
         idx: &mut ScreenIndex,
         backlog: &mut BacklogUpdates,
     ) -> &'l mut LinkContainer {
@@ -370,7 +373,7 @@ impl LinkStates {
             .unwrap();
         lc.bundle_add(bunlde);
         if bulk {
-            backlog.links.insert(lc.id, ());
+            backlog.links.insert(lc.id);
         } else {
             lc.update(nodes, ops, animations);
             idx.index(ScreenSlot::Link(lc.id), lc.screen_index(idx.step, true));
@@ -382,7 +385,7 @@ impl LinkStates {
         id: u32,
         nodes: &NodeStates,
         ops: &mut Options,
-        animations: &mut HashMap<u64, ()>,
+        animations: &mut HashSet<u64>,
         idx: &mut ScreenIndex,
         backlog: &mut BacklogUpdates,
     ) {
@@ -393,7 +396,7 @@ impl LinkStates {
         } else {
             return;
         }
-        for lid in bundles.keys() {
+        for lid in bundles.iter() {
             let src;
             let dst;
 
@@ -406,7 +409,7 @@ impl LinkStates {
             let mut rm = None;
             self.manage(*lid, false, &mut rm);
             if bulk {
-                backlog.links.insert(*lid, ());
+                backlog.links.insert(*lid);
             } else {
                 if let Some(lc) = rm {
                     idx.index(ScreenSlot::Link(*lid), (lc.screen_index.clone(), None));
@@ -753,12 +756,7 @@ impl LinkContainer {
         }
         return b;
     }
-    pub fn update(
-        &mut self,
-        nodes: &NodeStates,
-        ops: &mut Options,
-        animations: &mut HashMap<u64, ()>,
-    ) {
+    pub fn update(&mut self, nodes: &NodeStates, ops: &mut Options, animations: &mut HashSet<u64>) {
         let (src_id, dst_id) = self.get_node_ids();
         let src;
         let dst;
@@ -787,7 +785,7 @@ impl LinkContainer {
             // this code is temporary.. will need to upgrade it in order to support arches and elbows.
             let mut cu = self.compute_link_segement_line(&s, &d, r, src_id, &lc_opt);
             if !cu.animations.is_empty() {
-                animations.insert(self.id, ());
+                animations.insert(self.id);
             }
             self.compute_bunlde_points(&s, &d, self.bundles.len(), &mut cu.bundles);
             let src = LinkSource {

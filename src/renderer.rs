@@ -1,4 +1,8 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 pub mod img_loader;
 pub mod stater;
 pub mod targets;
@@ -42,6 +46,7 @@ pub struct Render {
     stater: Option<Stater>,
     targets: Option<Targets>,
     id: String,
+    img_pending: HashMap<String, HashSet<u32>>,
 }
 
 #[wasm_bindgen]
@@ -57,6 +62,7 @@ impl Render {
         };
         let res = Self {
             id,
+            img_pending: HashMap::new(),
             calc: calc as *mut Calculator,
             screen_res,
             cache: None,
