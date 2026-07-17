@@ -198,6 +198,17 @@ impl Calculator {
         let mut ls = HashSet::new();
         let nl = &self.links.node_links;
         if use_groups {
+            let mut iter = self.nodes.get_related(node_ids);
+            loop {
+                let (src, ss);
+                match iter.next() {
+                    Some(n) => (src, ss) = n,
+                    _ => break,
+                };
+                iter.nodes
+                    .update(Self::node_updates(idx, p, src, nl, &mut ls, ss));
+            }
+        } else {
             let mut known = HashSet::with_capacity(node_ids.len());
             for id in node_ids {
                 if known.contains(id) {
@@ -205,22 +216,14 @@ impl Calculator {
                 }
                 known.insert(*id);
                 let node;
-                match self.nodes.get(*id) {
-                    Some(src) => node = Self::node_updates(idx, p, src, nl, &mut ls),
-                    None => continue,
-                };
+                if let Some(src) = self.nodes.get_box(*id) {
+                    node = Self::node_updates(idx, p, src, nl, &mut ls, ScreenSlot::Box(*id))
+                } else if let Some(src) = self.nodes.get(*id) {
+                    node = Self::node_updates(idx, p, src, nl, &mut ls, ScreenSlot::Node(*id))
+                } else {
+                    continue;
+                }
                 self.nodes.update(node);
-            }
-        } else {
-            let mut iter = self.nodes.get_related(node_ids);
-            loop {
-                let src;
-                match iter.next() {
-                    Some(n) => src = n,
-                    _ => break,
-                };
-                iter.nodes
-                    .update(Self::node_updates(idx, p, src, nl, &mut ls));
             }
         }
 
@@ -255,10 +258,11 @@ impl Calculator {
         src: &Node,
         nl: &HashMap<u32, HashSet<u64>>,
         ls: &mut HashSet<u64>,
+        ss: ScreenSlot,
     ) -> Node {
         let node = src.transform(p.x, p.y, 0.0, 0.0);
         idx.index(
-            ScreenSlot::Node(src.id),
+            ss,
             (
                 Some(src.index_bound(idx.step)),
                 Some(node.index_bound(idx.step)),

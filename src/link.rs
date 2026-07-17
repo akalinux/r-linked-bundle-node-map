@@ -45,7 +45,7 @@ impl LinkStates {
     }
     pub fn reserve(&mut self, size: usize) {
         self.links.reserve(size);
-        self.node_links.reserve(size);
+        self.node_links.reserve(size * 2);
         self.bundle_links.reserve(size);
         self.link_links.reserve(size);
     }
@@ -134,10 +134,12 @@ impl LinkStates {
                         empty = nl.is_empty()
                     }
                 }
-                None => {}
+                _ => (),
             };
             if !add && empty {
                 self.node_links.remove(&n);
+            } else {
+                self.node_links.insert(n, HashSet::from([id]));
             }
         }
     }

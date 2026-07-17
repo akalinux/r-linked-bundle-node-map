@@ -357,7 +357,7 @@ impl ScreenIndex {
                 }
             }
             for node_id in r.boxes.iter() {
-                if let Some(node) = n.node_in_point(*node_id, &tp) {
+                if let Some(node) = n.box_in_point(*node_id, &tp) {
                     return Some(PointLookupResult::Box(node));
                 }
             }

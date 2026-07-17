@@ -101,7 +101,8 @@ fn node_box() {
 fn get_related_node_tests() {
     let mut nodes = NodeStates::new(3);
     let l = String::from("value");
-    nodes.insert(Node {
+
+    let node_a = Node {
         x: 0.0,
         y: 0.0,
         h: 2.0,
@@ -110,8 +111,8 @@ fn get_related_node_tests() {
         label: l.clone(),
         opt: 0,
         groups: Vec::from([0, 1]),
-    });
-    nodes.insert(Node {
+    };
+    let node_b = Node {
         x: 0.0,
         y: 0.0,
         h: 2.0,
@@ -120,8 +121,8 @@ fn get_related_node_tests() {
         label: l.clone(),
         opt: 0,
         groups: Vec::from([2, 1]),
-    });
-    nodes.insert(Node {
+    };
+    let node_c = Node {
         x: 0.0,
         y: 0.0,
         h: 2.0,
@@ -130,10 +131,13 @@ fn get_related_node_tests() {
         label: l.clone(),
         opt: 0,
         groups: Vec::from([0, 3]),
-    });
+    };
+    nodes.insert(node_a.clone());
+    nodes.insert(node_b.clone());
+    nodes.insert(node_c.clone());
     let mut res = Vec::new();
     for node in nodes.get_related(&[0, 1]) {
-        res.push(node.id);
+        res.push(node.0.id);
     }
     res.sort();
     assert_eq!(res, vec![0, 1, 3]);
@@ -141,22 +145,22 @@ fn get_related_node_tests() {
     nodes.remove(0);
     res.clear();
     for node in nodes.get_related(&[0, 1]) {
-        res.push(node.id);
+        res.push(node.0.id);
     }
     assert_eq!(res, vec![1]);
-    nodes.insert(Node {
-        x: 0.0,
-        y: 0.0,
-        h: 2.0,
-        w: 2.0,
-        id: 0,
-        label: l.clone(),
-        opt: 0,
-        groups: Vec::from([0, 1]),
-    });
+    nodes.insert(node_a.clone());
     res.clear();
     for node in nodes.get_related(&[0]) {
-        res.push(node.id);
+        res.push(node.0.id);
+    }
+    res.sort();
+    assert_eq!(res, vec![0, 1, 3]);
+    // box layer testing
+    res.clear();
+    nodes.remove(0);
+    nodes.insert_box(node_a.clone());
+    for node in nodes.get_related(&[0]) {
+        res.push(node.0.id);
     }
     res.sort();
     assert_eq!(res, vec![0, 1, 3]);
@@ -187,6 +191,16 @@ fn center_tests() {
         opt: 0,
         groups: Vec::from([0, 1]),
     };
+    let c = Node {
+        x: 5.0,
+        y: 5.0,
+        h: 2.0,
+        w: 2.0,
+        id: 3,
+        label: l.clone(),
+        opt: 0,
+        groups: Vec::from([0, 1]),
+    };
     ns.insert(a.clone());
     assert_eq!(ns.get_center(), Point { x: 0.0, y: 0.0 });
     ns.insert(b.clone());
@@ -197,6 +211,43 @@ fn center_tests() {
     assert_eq!(ns.get_center(), Point { x: 2.5, y: 2.5 });
     ns.remove(b.id);
     assert_eq!(ns.get_center(), Point { x: 0.0, y: 0.0 });
+    ns.insert_box(c);
+}
+
+#[test]
+#[should_panic]
+fn add_node_as_box_fail() {
+    let a = Node {
+        x: 0.0,
+        y: 0.0,
+        h: 2.0,
+        w: 2.0,
+        id: 0,
+        label: String::from("value"),
+        opt: 0,
+        groups: Vec::from([0, 1]),
+    };
+    let mut ns = NodeStates::new(2);
+    ns.insert(a.clone());
+    ns.insert_box(a.clone());
+}
+
+#[test]
+#[should_panic]
+fn add_box_as_node_fail() {
+    let a = Node {
+        x: 0.0,
+        y: 0.0,
+        h: 2.0,
+        w: 2.0,
+        id: 0,
+        label: String::from("value"),
+        opt: 0,
+        groups: Vec::from([0, 1]),
+    };
+    let mut ns = NodeStates::new(2);
+    ns.insert_box(a.clone());
+    ns.insert(a.clone());
 }
 
 #[test]

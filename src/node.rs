@@ -7,7 +7,7 @@ use std::{
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    CalculatorTrait, ContainsPoint, FullBox, GetCenter, Point, PointBox,
+    CalculatorTrait, ContainsPoint, FullBox, GetCenter, Point, PointBox, bsp::ScreenSlot,
     constants::DEFAULT_OPT_NAME, id_compare,
 };
 
@@ -79,30 +79,30 @@ impl<'n> GetRelatedNodes<'n> {
     pub fn new(init: &[u32], nodes: &'n mut NodeStates) -> Self {
         let mut known_nodes = HashSet::with_capacity(init.len() * 2);
         let known_groups = HashSet::with_capacity(init.len() * 2);
-        let mut todo = Vec::with_capacity(init.len() * 4);
+        let mut todo = Vec::with_capacity(init.len());
         let mut base_nodes = HashSet::with_capacity(init.len());
         for id in init {
-            if known_nodes.contains(id) || nodes.get(*id).is_none() {
+            if known_nodes.contains(id)
+                || (nodes.get(*id).is_none() && nodes.get_box(*id).is_none())
+            {
                 continue;
             }
             known_nodes.insert(*id);
             todo.push(*id);
             base_nodes.insert(*id);
         }
-        let mut res = Self {
+        Self {
             nodes,
             known_nodes,
             known_groups,
             todo,
             base_nodes,
-        };
-        res.todo.reserve(init.len() * 2);
-        return res;
+        }
     }
 }
 
 impl<'n> Iterator for GetRelatedNodes<'n> {
-    type Item = &'n Node;
+    type Item = (&'n Node, ScreenSlot);
     fn next(&mut self) -> Option<Self::Item> {
         let todo = &mut self.todo;
         if todo.is_empty() {
@@ -113,9 +113,28 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
         let known_groups = &mut self.known_groups;
         let nodes = &self.nodes;
         if !self.base_nodes.contains(&next) {
-            return Some(unsafe { mem::transmute(nodes.get(next).unwrap()) });
+            let res;
+            let ss;
+            if let Some(n) = nodes.get_box(next) {
+                res = n;
+                ss = ScreenSlot::Box(n.id)
+            } else if let Some(n) = nodes.get(next) {
+                res = n;
+                ss = ScreenSlot::Node(n.id)
+            } else {
+                panic!("Failed to lookup Id: {}", next);
+            }
+            return Some((unsafe { mem::transmute(res) }, ss));
         }
-        let groups = &self.nodes.get(next).unwrap().groups;
+        let groups;
+        if let Some(n) = self.nodes.get_box(next) {
+            groups = &n.groups
+        } else if let Some(n) = self.nodes.get(next) {
+            groups = &n.groups
+        } else {
+            panic!("Failed to lookup Id: {}", next);
+        }
+
         todo.reserve(groups.len());
         known_nodes.reserve(groups.len());
         known_groups.reserve(groups.len());
@@ -130,8 +149,10 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
                 Some(l) => list = l,
                 None => continue,
             }
-            for node_id in list.keys() {
-                if known_nodes.contains(node_id) || !self.nodes.nodes.contains_key(node_id) {
+            for node_id in list.iter() {
+                if known_nodes.contains(node_id)
+                    || !(nodes.nodes.contains_key(node_id) || nodes.boxes.contains_key(node_id))
+                {
                     continue;
                 }
                 known_nodes.insert(*node_id);
@@ -139,7 +160,18 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
                 todo.push(*node_id);
             }
         }
-        return Some(unsafe { mem::transmute(nodes.get(next).unwrap()) });
+        let node;
+        let ss;
+        if let Some(n) = nodes.get_box(next) {
+            node = n;
+            ss = ScreenSlot::Box(node.id);
+        } else if let Some(n) = nodes.get(next) {
+            node = n;
+            ss = ScreenSlot::Node(n.id);
+        } else {
+            return None;
+        }
+        return Some((unsafe { mem::transmute(node) }, ss));
     }
 }
 
@@ -286,7 +318,7 @@ pub struct NodeStates {
     pub nodes: HashMap<u32, Node>,
     pub boxes: HashMap<u32, Node>,
     pub box_updates: HashMap<u32, Node>,
-    pub groups: HashMap<u32, HashMap<u32, ()>>,
+    pub groups: HashMap<u32, HashSet<u32>>,
     pub center: Point,
 }
 
@@ -297,10 +329,22 @@ impl NodeStates {
                 if n.in_point(p) {
                     return Some(n.clone());
                 }
-                return None;
             }
-            _ => return None,
-        }
+            _ => (),
+        };
+        None
+    }
+
+    pub fn box_in_point(&self, id: u32, p: &Point) -> Option<Node> {
+        match self.get_box(id) {
+            Some(n) => {
+                if n.in_point(p) {
+                    return Some(n.clone());
+                }
+            }
+            _ => (),
+        };
+        None
     }
     pub fn get_related<'n>(&'n mut self, node_ids: &[u32]) -> GetRelatedNodes<'n> {
         return GetRelatedNodes::new(node_ids, self);
@@ -352,9 +396,9 @@ impl NodeStates {
     fn append_node_grps(&mut self, node_id: u32, groups: &[u32]) {
         for group in groups {
             if let Some(g) = self.groups.get_mut(group) {
-                g.insert(node_id, ());
+                g.insert(node_id);
             } else {
-                let g = HashMap::from([(node_id, ())]);
+                let g = HashSet::from([(node_id)]);
                 self.groups.insert(*group, g);
             }
         }
@@ -385,7 +429,7 @@ impl NodeStates {
             self.clear_node_grps(node.id, &n.groups);
         }
         self.append_node_grps(node.id, &node.groups);
-        return self.nodes.insert(node.id, node);
+        return self.boxes.insert(node.id, node);
     }
 
     pub fn remove_box(&mut self, id: u32) -> Option<Node> {
@@ -420,7 +464,9 @@ impl NodeStates {
         };
     }
     pub fn update(&mut self, node: Node) -> Option<Node> {
-        if let Some(node) = self.node_updates.get(&node.id) {
+        if self.boxes.contains_key(&node.id) {
+            return self.box_updates.insert(node.id, node);
+        } else if let Some(node) = self.node_updates.get(&node.id) {
             self.center.x -= node.x;
             self.center.y -= node.y;
         } else if let Some(node) = self.nodes.get(&node.id) {
