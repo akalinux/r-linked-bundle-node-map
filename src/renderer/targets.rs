@@ -1,9 +1,10 @@
+use crate::Point;
 use crate::ScreenBox;
-use crate::{Point, renderer::stater::Stater};
+use crate::renderer::Render;
 use gloo::{events::EventListener, events::EventListenerOptions};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use web_sys::DomRectReadOnly;
+use web_sys::CanvasRenderingContext2d;
 use web_sys::{Document, Element};
 use web_sys::{
     Event, HtmlCanvasElement, HtmlDivElement, MouseEvent, ResizeObserver, ResizeObserverEntry,
@@ -18,13 +19,15 @@ pub struct Targets {
     pub nodes: HtmlCanvasElement,
     pub highlight: HtmlCanvasElement,
     pub root: Element,
-    stater: *mut Stater,
+    render: *mut Render,
     on_move: Option<EventListener>,
     on_down: Option<EventListener>,
     on_up: Option<EventListener>,
     on_leave: Option<EventListener>,
     on_wheel: Option<EventListener>,
     on_size: Option<SizeWatcher>,
+    on_enter: Option<EventListener>,
+    screen_box: ScreenBox,
 }
 
 impl Drop for Targets {
@@ -74,7 +77,7 @@ impl Drop for SizeWatcher {
 
 macro_rules! add_listen_callback {
     ($self:ident,$target:literal,$field:ident,$method:ident) => {{
-        let ptr = $self.stater;
+        let ptr = $self.render;
         let div = $self.div.clone();
         $self.$field = Some(EventListener::new_with_options(
             &$self.div,
@@ -91,7 +94,41 @@ macro_rules! add_listen_callback {
         ))
     }};
 }
+
+macro_rules! get_canvas2d {
+    ($field:expr) => {
+        $field
+            .get_context("2d")
+            .unwrap()
+            .unwrap()
+            .dyn_into::<web_sys::CanvasRenderingContext2d>()
+            .unwrap()
+    };
+}
 impl Targets {
+    pub fn get_render_targets(
+        &self,
+    ) -> (
+        CanvasRenderingContext2d,
+        CanvasRenderingContext2d,
+        CanvasRenderingContext2d,
+        CanvasRenderingContext2d,
+    ) {
+        (
+            get_canvas2d!(self.boxnodes),
+            get_canvas2d!(self.links),
+            get_canvas2d!(self.animations),
+            get_canvas2d!(self.nodes),
+        )
+    }
+    pub fn get_animation_target(&self) -> CanvasRenderingContext2d {
+        get_canvas2d!(self.animations)
+    }
+
+    pub fn get_highlight_target(&self) -> CanvasRenderingContext2d {
+        get_canvas2d!(self.highlight)
+    }
+
     fn get_child_targets(&self) -> [&HtmlCanvasElement; 5] {
         [
             &self.boxnodes,
@@ -101,9 +138,13 @@ impl Targets {
             &self.nodes,
         ]
     }
-    pub fn center_canvas(&self, src: &ScreenBox) {
-        let default = unsafe { (*(*self.stater).render).get_screenbox() };
-        let dst = src.center(default);
+    pub fn center_canvas(&mut self) {
+        let src = self.get_screenbox();
+        if src == self.screen_box {
+            return;
+        }
+        self.screen_box = src;
+        let dst = src.center(&unsafe { (*self.render).canvas_box() });
         let top = format!("{:.2}px", dst.y);
         let left = format!("{:.2}px", dst.x);
         for c in self.get_child_targets() {
@@ -118,25 +159,26 @@ impl Targets {
     }
 
     pub fn new(
-        stater: *mut Stater,
+        render: *mut Render,
         id: String,
         div_style: String,
         canvas_style: String,
     ) -> Result<Self, JsValue> {
-        let sb = unsafe { (*(*stater).render).get_screenbox() };
+        let sb = unsafe { (*render).canvas_box() };
 
         let (dom, div, root) = Self::create_div(&id, div_style)?;
         let rect = div.get_bounding_client_rect();
-        let w = rect.width() as u32;
-        let h = rect.height() as u32;
-        let center_on = ScreenBox {
-            width: w,
-            height: h,
+        let screen_box = ScreenBox {
             x: 0,
             y: 0,
+            width: rect.width() as u32,
+            height: rect.height() as u32,
             step: sb.step,
         };
-        let dst = center_on.center(sb);
+        let dst = screen_box.center(&sb);
+        let w = sb.width;
+        let h = sb.height;
+
         let top = format!("{:.2}px;", dst.y);
         let left = format!("{:.2}px;", dst.x);
         let boxnodes = Self::create_canvas(&dom, &div, &canvas_style, w, h, &top, &left)?;
@@ -152,13 +194,15 @@ impl Targets {
             nodes,
             animations,
             highlight,
-            stater,
+            render,
             on_down: None,
+            on_enter: None,
             on_leave: None,
             on_move: None,
             on_size: None,
             on_up: None,
             on_wheel: None,
+            screen_box: screen_box,
         };
         res.init_watchers()?;
 
@@ -182,7 +226,7 @@ impl Targets {
         let style = c.style();
         c.set_attribute("style", canvas_style)?;
         style.set_property("width", &format!("{}px", w))?;
-        style.set_property("height", &format!("{}px", w))?;
+        style.set_property("height", &format!("{}px", h))?;
         style.set_property("top", top)?;
         style.set_property("left", left)?;
         div.append_child(&c)?;
@@ -232,7 +276,8 @@ impl Targets {
         add_listen_callback!(self, "mouseup", on_up, mouse_up);
         add_listen_callback!(self, "mousedown", on_down, mouse_down);
         add_listen_callback!(self, "mouseleave", on_leave, mouse_leave);
-        let ptr = self.stater;
+        add_listen_callback!(self, "mouseenter", on_enter, mouse_enter);
+        let ptr = self.render;
 
         self.on_wheel = Some(EventListener::new_with_options(
             &self.div,
@@ -252,14 +297,11 @@ impl Targets {
             },
         ));
 
-        let step = self.get_step();
-        let ptr = self as *mut Targets;
+        let ptr = self as *mut Self;
         let cb = move |entries: Vec<ResizeObserverEntry>, _observer: ResizeObserver| {
-            for entry in entries {
-                // Get the updated bounding box details natively computed by the browser
-                let rect = entry.content_rect();
-                let screen = Self::get_screen(&rect, step);
-                unsafe { (*ptr).center_canvas(&screen) };
+            for _ in entries {
+                unsafe { (*ptr).center_canvas() };
+                return;
             }
         };
         match SizeWatcher::new(&self.div, cb) {
@@ -269,18 +311,15 @@ impl Targets {
 
         Ok(())
     }
-    fn get_step(&self) -> i64 {
-        unsafe { (*(*(*self.stater).render).calc()).indexer().step }
-    }
-    fn get_screen(rect: &DomRectReadOnly, step: i64) -> ScreenBox {
-        let width = rect.width() as u32;
-        let height = rect.height() as u32;
+
+    pub fn get_screenbox(&self) -> ScreenBox {
+        let rect = self.div.get_bounding_client_rect();
         ScreenBox {
             x: 0,
             y: 0,
-            step,
-            width,
-            height,
+            step: unsafe { (*self.render).get_step() },
+            width: rect.width() as u32,
+            height: rect.height() as u32,
         }
     }
 }

@@ -2,7 +2,7 @@ use crate::{
     CalculatorTrait, Point, PointBox, ScreenBox, Transform,
     bsp::{IdxBoxAction, IdxBoxIter, OnScreen, PointLookupResult, ScreenIndex, ScreenSlot},
     constants::{DEFAULT_NODE_R, ZERO_TRANSFORM},
-    link::{Bundle, BunldeOpt, Link, LinkContainerOpt, LinkOpt, LinkStates},
+    link::{Bundle, BundleOpt, Link, LinkContainerOpt, LinkOpt, LinkStates},
     node::{Node, NodeOpt, NodeStates},
 };
 use pastey::paste;
@@ -65,7 +65,7 @@ macro_rules! build_opts {
 
 pub struct Options {
     pub link: HashMap<u32, LinkOpt>,
-    pub bundle: HashMap<u32, BunldeOpt>,
+    pub bundle: HashMap<u32, BundleOpt>,
     pub node: HashMap<u32, NodeOpt>,
     pub lc: HashMap<u32, LinkContainerOpt>,
 }
@@ -75,7 +75,7 @@ pub struct Options {
 #[derive(Clone, Debug)]
 pub struct BulkLoad {
     pub link_opts: Vec<LinkOpt>,
-    pub bundle_ops: Vec<BunldeOpt>,
+    pub bundle_ops: Vec<BundleOpt>,
     pub node_ops: Vec<NodeOpt>,
     pub lc_ops: Vec<LinkContainerOpt>,
     pub nodes: Vec<Node>,
@@ -89,7 +89,7 @@ impl BulkLoad {
     #[wasm_bindgen(constructor)]
     pub fn new(
         link_opts: Vec<LinkOpt>,
-        bundle_ops: Vec<BunldeOpt>,
+        bundle_ops: Vec<BundleOpt>,
         node_ops: Vec<NodeOpt>,
         lc_ops: Vec<LinkContainerOpt>,
         nodes: Vec<Node>,
@@ -132,7 +132,7 @@ impl Options {
     }
 }
 build_opts!(LinkOpt, link, get_link, set_link, rm_link);
-build_opts!(BunldeOpt, bundle, get_bundle, set_bundle, rm_bundle);
+build_opts!(BundleOpt, bundle, get_bundle, set_bundle, rm_bundle);
 build_opts!(NodeOpt, node, get_node, set_node, rm_node);
 build_opts!(LinkContainerOpt, lc, get_lc, set_lc, rm_lc);
 
@@ -187,7 +187,7 @@ macro_rules! calc_bulk {
 calc_bulk!(NodeOpt, node);
 calc_bulk!(LinkContainerOpt, lc);
 calc_bulk!(LinkOpt, link);
-calc_bulk!(BunldeOpt, bundle);
+calc_bulk!(BundleOpt, bundle);
 
 impl CalculatorTrait for Calculator {}
 

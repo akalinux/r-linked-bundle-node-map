@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::{
     CalculatorTrait, ContainsPoint, FullBox, GetCenter, Point, PointBox, bsp::ScreenSlot,
-    constants::DEFAULT_OPT_NAME, id_compare,
+    id_compare,
 };
 
 #[wasm_bindgen]
@@ -175,22 +175,29 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
     }
 }
 
-#[wasm_bindgen(inspectable)]
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen(inspectable, getter_with_clone)]
 #[derive(Clone, Debug)]
 pub struct NodeOpt {
     pub id: u32,
-    pub label: String,
     pub img: String,
     pub color: String,
     pub label_position: LabelPosition,
 }
 
+#[wasm_bindgen]
 impl NodeOpt {
+    #[wasm_bindgen(constructor)]
+    pub fn new(id: u32, img: String, color: String, label_position: LabelPosition) -> Self {
+        Self {
+            id,
+            img,
+            color,
+            label_position,
+        }
+    }
     pub fn defaults() -> Self {
         return Self {
             id: 0,
-            label: String::from(DEFAULT_OPT_NAME),
             img: String::from(""),
             color: String::from("DEFAULT_COLOR"),
             label_position: LabelPosition::Top,

@@ -3,6 +3,7 @@ use std::{
     mem,
 };
 
+use js_sys::Array;
 use wasm_bindgen::prelude::*;
 
 use crate::{
@@ -11,7 +12,7 @@ use crate::{
     calc::{BacklogUpdates, Options},
     constants::{
         DEFAULT_ANIMATION_COLOR, DEFAULT_ANIMATION_DASHES, DEFAULT_ANIMATION_WIDTH_SCALE,
-        DEFAULT_BUNDLE_COLOR, DEFAULT_COLOR, DEFAULT_LINK_SCALE, DEFAULT_OPT_NAME,
+        DEFAULT_BUNDLE_COLOR, DEFAULT_COLOR, DEFAULT_LINK_SCALE,
     },
     id_compare,
     node::{Node, NodeStates},
@@ -435,8 +436,7 @@ pub enum Animation {
     None,  // Do not animate
 }
 
-#[wasm_bindgen(inspectable)]
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen(inspectable, getter_with_clone)]
 #[derive(Clone, Debug)]
 pub struct Link {
     pub id: u32,
@@ -466,73 +466,102 @@ impl Link {
     }
 }
 
-#[wasm_bindgen(inspectable)]
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen(inspectable, getter_with_clone)]
 #[derive(Clone, Debug)]
 pub struct LinkContainerOpt {
     pub id: u32,
-    pub label: String,
     pub scale: f64,
     pub animation_scale: f64,
 }
 
+#[wasm_bindgen]
 impl LinkContainerOpt {
     pub fn defaults() -> Self {
         return Self {
             id: 0,
-            label: String::from(DEFAULT_OPT_NAME),
             scale: DEFAULT_LINK_SCALE,
             animation_scale: DEFAULT_ANIMATION_WIDTH_SCALE,
         };
     }
+    #[wasm_bindgen(constructor)]
+    pub fn new(id: u32, scale: f64, animation_scale: f64) -> Self {
+        Self {
+            id,
+            scale,
+            animation_scale,
+        }
+    }
 }
 
-#[wasm_bindgen(inspectable)]
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen(inspectable, getter_with_clone)]
 #[derive(Clone, Debug)]
 pub struct LinkOpt {
     pub id: u32,
-    pub label: String,
     pub color: String,
     pub animation_color: String,
     pub animation_dashes: Vec<f64>,
 }
 
+#[wasm_bindgen]
 impl LinkOpt {
     pub fn defaults() -> Self {
-        return Self {
+        Self {
             id: 0,
-            label: String::from(DEFAULT_OPT_NAME),
             color: String::from(DEFAULT_COLOR),
             animation_color: String::from(DEFAULT_ANIMATION_COLOR),
             animation_dashes: Vec::from(DEFAULT_ANIMATION_DASHES),
-        };
+        }
+    }
+
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        id: u32,
+        color: String,
+        animation_color: String,
+        animation_dashes: Vec<f64>,
+    ) -> Self {
+        Self {
+            id,
+            color,
+            animation_color,
+            animation_dashes,
+        }
+    }
+}
+impl LinkOpt {
+    pub fn animation_dashes(&self) -> Array {
+        let res = Array::new_with_length(self.animation_dashes.len() as u32);
+        for p in &self.animation_dashes {
+            res.push(&JsValue::from_f64(*p));
+        }
+        return res;
     }
 }
 
-#[wasm_bindgen(inspectable)]
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen(inspectable, getter_with_clone)]
 #[derive(Clone, Debug)]
-pub struct BunldeOpt {
+pub struct BundleOpt {
     pub id: u32,
-    pub label: String,
     pub color: String,
     pub img: String,
 }
 
-impl BunldeOpt {
+#[wasm_bindgen]
+impl BundleOpt {
+    #[wasm_bindgen(constructor)]
+    pub fn new(id: u32, color: String, img: String) -> Self {
+        Self { id, color, img }
+    }
     pub fn defaults() -> Self {
         return Self {
             id: 0,
-            label: String::from(DEFAULT_OPT_NAME),
             color: String::from(DEFAULT_BUNDLE_COLOR),
             img: String::from(""),
         };
     }
 }
 
-#[wasm_bindgen(inspectable)]
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen(inspectable, getter_with_clone)]
 #[derive(Clone, Debug)]
 pub struct Bundle {
     pub id: u32,
@@ -589,8 +618,6 @@ impl SrcDstIs for Link {
     }
 }
 
-#[wasm_bindgen(getter_with_clone)]
-#[derive(Clone)]
 pub struct LinkContainer {
     pub links: Vec<Link>,
     pub bundles: Vec<Bundle>,
@@ -661,7 +688,6 @@ impl GetCenter for ComputedLinks {
     }
 }
 
-#[wasm_bindgen]
 #[derive(Copy, Clone)]
 pub struct ComputedLink {
     pub src: Point,
@@ -700,7 +726,6 @@ impl LinkBox {
     }
 }
 
-#[wasm_bindgen]
 #[derive(Copy, Clone, Debug)]
 pub struct AnimatedLink {
     pub src: Point,
@@ -717,7 +742,6 @@ pub(crate) fn create_container_id(src: u32, dst: u32) -> u64 {
     return id;
 }
 
-#[wasm_bindgen]
 #[derive(Clone, Debug, PartialEq)]
 pub enum LinkContainsType {
     Bundle(Bundle),
@@ -1075,7 +1099,7 @@ id_compare!(
     Link,
     Bundle,
     LinkOpt,
-    BunldeOpt,
+    BundleOpt,
     LinkContainerOpt,
     LinkContainer
 );

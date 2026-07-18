@@ -45,3 +45,8 @@ pub const ZERO_TRANSFORM: Transform = Transform {
     y: 0.0,
     k: 1.0,
 };
+
+pub const DEFAULT_SCREEN_ZOOM: f64 = 0.05;
+pub const DEFAULT_HIGHLIGHT_SCALE: f64 = 1.10;
+pub const DEFAULT_FONT_FAMILY: &'static str = "10px Arial";
+pub const DEFAULT_TEXT_ALIGN: &'static str = "center";

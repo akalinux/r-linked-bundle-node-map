@@ -17,7 +17,6 @@ fn option_tests() {
     assert_eq!(opt.get_node(&1).id, NodeOpt::defaults().id);
     opt.set_node(NodeOpt {
         id: 1,
-        label: String::from("Does not exist"),
         img: String::from(""),
         color: String::from("pink"),
         label_position: LabelPosition::Bottom,
