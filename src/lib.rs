@@ -21,6 +21,24 @@ pub struct ScreenBox {
     pub step: i64,
 }
 
+#[derive(Hash, PartialEq, Eq)]
+pub enum ImgWatchId {
+    Node(u32),
+    Bundle(u32),
+}
+pub trait ImgSrc {
+    fn img_src(&self) -> String;
+    fn box_color(&self) -> String;
+    fn watch_id(&self) -> ImgWatchId;
+}
+
+pub trait RenderBox {
+    fn width(&self) -> f64;
+    fn height(&self) -> f64;
+    fn x(&self) -> f64;
+    fn y(&self) -> f64;
+    fn id(&self) -> ImgWatchId;
+}
 impl CalculatorTrait for ScreenBox {}
 #[wasm_bindgen]
 impl ScreenBox {

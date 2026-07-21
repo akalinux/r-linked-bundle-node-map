@@ -7,8 +7,8 @@ use std::{
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    CalculatorTrait, ContainsPoint, FullBox, GetCenter, Point, PointBox, bsp::ScreenSlot,
-    id_compare,
+    CalculatorTrait, ContainsPoint, FullBox, GetCenter, ImgSrc, Point, PointBox, RenderBox,
+    bsp::ScreenSlot, id_compare,
 };
 
 #[wasm_bindgen]
@@ -30,6 +30,27 @@ pub struct Node {
     pub label: String,
     pub opt: u32,
     pub groups: Vec<u32>,
+}
+
+impl RenderBox for Node {
+    fn id(&self) -> crate::ImgWatchId {
+        crate::ImgWatchId::Node(self.id)
+    }
+    fn width(&self) -> f64 {
+        self.w
+    }
+
+    fn height(&self) -> f64 {
+        self.h
+    }
+
+    fn x(&self) -> f64 {
+        self.x - self.w * 0.5
+    }
+
+    fn y(&self) -> f64 {
+        self.y - self.h * 0.5
+    }
 }
 
 impl PartialOrd for Node {
@@ -182,6 +203,20 @@ pub struct NodeOpt {
     pub img: String,
     pub color: String,
     pub label_position: LabelPosition,
+}
+
+impl ImgSrc for NodeOpt {
+    fn img_src(&self) -> String {
+        self.img.clone()
+    }
+
+    fn box_color(&self) -> String {
+        self.color.clone()
+    }
+
+    fn watch_id(&self) -> crate::ImgWatchId {
+        crate::ImgWatchId::Node(self.id)
+    }
 }
 
 #[wasm_bindgen]

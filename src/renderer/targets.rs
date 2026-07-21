@@ -35,13 +35,9 @@ impl Drop for Targets {
         self.clear_watchers();
         let div = &self.div;
         for c in self.get_child_targets() {
-            match div.remove_child(c) {
-                _ => (),
-            }
+            let _ = div.remove_child(c);
         }
-        match self.root.remove_child(div) {
-            _ => (),
-        }
+        let _ = self.root.remove_child(div);
     }
 }
 
@@ -149,12 +145,8 @@ impl Targets {
         let left = format!("{:.2}px", dst.x);
         for c in self.get_child_targets() {
             let style = c.style();
-            match style.set_property("top", &top) {
-                _ => (),
-            };
-            match style.set_property("left", &left) {
-                _ => (),
-            }
+            let _ = style.set_property("top", &top);
+            let _ = style.set_property("left", &left);
         }
     }
 

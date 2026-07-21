@@ -3,16 +3,15 @@ use std::{
     mem,
 };
 
-use js_sys::Array;
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    CalculatorTrait, FullBox, GetCenter, Point, PointBox,
+    CalculatorTrait, FullBox, GetCenter, ImgSrc, Point, PointBox, RenderBox,
     bsp::{IndexPart, IndexSet, ScreenIndex, ScreenSlot},
     calc::{BacklogUpdates, Options},
     constants::{
-        DEFAULT_ANIMATION_COLOR, DEFAULT_ANIMATION_DASHES, DEFAULT_ANIMATION_WIDTH_SCALE,
-        DEFAULT_BUNDLE_COLOR, DEFAULT_COLOR, DEFAULT_LINK_SCALE,
+        DEFAULT_ANIMATION_COLOR, DEFAULT_ANIMATION_WIDTH_SCALE, DEFAULT_BUNDLE_COLOR,
+        DEFAULT_COLOR, DEFAULT_LINK_SCALE,
     },
     id_compare,
     node::{Node, NodeStates},
@@ -499,7 +498,6 @@ pub struct LinkOpt {
     pub id: u32,
     pub color: String,
     pub animation_color: String,
-    pub animation_dashes: Vec<f64>,
 }
 
 #[wasm_bindgen]
@@ -509,32 +507,16 @@ impl LinkOpt {
             id: 0,
             color: String::from(DEFAULT_COLOR),
             animation_color: String::from(DEFAULT_ANIMATION_COLOR),
-            animation_dashes: Vec::from(DEFAULT_ANIMATION_DASHES),
         }
     }
 
     #[wasm_bindgen(constructor)]
-    pub fn new(
-        id: u32,
-        color: String,
-        animation_color: String,
-        animation_dashes: Vec<f64>,
-    ) -> Self {
+    pub fn new(id: u32, color: String, animation_color: String) -> Self {
         Self {
             id,
             color,
             animation_color,
-            animation_dashes,
         }
-    }
-}
-impl LinkOpt {
-    pub fn animation_dashes(&self) -> Array {
-        let res = Array::new_with_length(self.animation_dashes.len() as u32);
-        for p in &self.animation_dashes {
-            res.push(&JsValue::from_f64(*p));
-        }
-        return res;
     }
 }
 
@@ -545,7 +527,18 @@ pub struct BundleOpt {
     pub color: String,
     pub img: String,
 }
+impl ImgSrc for BundleOpt {
+    fn img_src(&self) -> String {
+        self.img.clone()
+    }
 
+    fn box_color(&self) -> String {
+        self.color.clone()
+    }
+    fn watch_id(&self) -> crate::ImgWatchId {
+        crate::ImgWatchId::Bundle(self.id)
+    }
+}
 #[wasm_bindgen]
 impl BundleOpt {
     #[wasm_bindgen(constructor)]
@@ -623,8 +616,8 @@ pub struct LinkContainer {
     pub bundles: Vec<Bundle>,
     pub id: u64,
     pub opt: u32,
-    screen_index: IndexPart,
-    link_src: Option<LinkSource>,
+    pub screen_index: IndexPart,
+    pub link_src: Option<LinkSource>,
 }
 
 #[derive(Clone)]
@@ -648,6 +641,43 @@ pub struct ComputedLinks {
     pub animations: Vec<AnimatedLink>,
     pub bundles: Vec<Point>,
 }
+pub struct BundleRenderBox {
+    x: f64,
+    y: f64,
+    s: f64,
+    id: u32,
+}
+impl BundleRenderBox {
+    pub fn new(p: &Point, s: f64, id: u32) -> Self {
+        Self {
+            x: p.x,
+            y: p.y,
+            s,
+            id,
+        }
+    }
+}
+impl RenderBox for BundleRenderBox {
+    fn width(&self) -> f64 {
+        self.s
+    }
+
+    fn height(&self) -> f64 {
+        self.s
+    }
+
+    fn x(&self) -> f64 {
+        self.x - self.s * 0.5
+    }
+
+    fn y(&self) -> f64 {
+        self.y - self.s * 0.5
+    }
+    fn id(&self) -> crate::ImgWatchId {
+        crate::ImgWatchId::Bundle(self.id)
+    }
+}
+
 impl FullBox for ComputedLinks {
     fn full_box(&self) -> (Point, Point, Point, Point) {
         let min_x = self.min_x;
@@ -692,6 +722,7 @@ impl GetCenter for ComputedLinks {
 pub struct ComputedLink {
     pub src: Point,
     pub dst: Point,
+    pub opt: u32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -731,6 +762,7 @@ pub struct AnimatedLink {
     pub src: Point,
     pub dst: Point,
     pub width: f64,
+    pub opt: u32,
 }
 pub(crate) fn create_container_id(src: u32, dst: u32) -> u64 {
     let id: u64;
@@ -749,6 +781,35 @@ pub enum LinkContainsType {
 }
 
 impl LinkContainer {
+    pub fn get_bundle_box(&self, id: u32) -> Option<BundleRenderBox> {
+        if let Some(cl) = &self.link_src {
+            for pos in 0..=self.bundles.len() {
+                let b = &self.bundles[pos];
+                if id == b.id {
+                    let p = cl.cl.bundles[pos];
+                    return Some(BundleRenderBox {
+                        x: p.x,
+                        y: p.y,
+                        s: cl.cl.width,
+                        id,
+                    });
+                }
+            }
+        }
+        None
+    }
+    pub fn get_link_render(&self, id: u32) -> Option<(Point, Point, f64, u32)> {
+        if let Some(lc) = &self.link_src {
+            for pos in 0..=self.links.len() {
+                let link = &self.links[pos];
+                if id == link.id {
+                    let set = lc.cl.links[pos];
+                    return Some((set.src, set.dst, lc.cl.width, set.opt));
+                }
+            }
+        }
+        None
+    }
     pub fn contains_point(&self, p: &Point) -> Option<LinkContainsType> {
         let cu;
         if let Some(c) = &self.link_src {
@@ -878,11 +939,13 @@ impl LinkContainer {
                 clink = ComputedLink {
                     src: start,
                     dst: end,
+                    opt: link.opt,
                 }
             } else {
                 clink = ComputedLink {
                     src: end,
                     dst: start,
+                    opt: link.opt,
                 }
             }
             match link.animation {
@@ -894,11 +957,13 @@ impl LinkContainer {
                         src: self.get_xy(clink.src.x, clink.src.y, init_step, angle_north),
                         dst: self.get_xy(clink.dst.x, clink.dst.y, init_step, angle_north),
                         width: aw,
+                        opt: link.opt,
                     });
                     animations.push(AnimatedLink {
                         src: self.get_xy(clink.dst.x, clink.dst.y, init_step, angle_south),
                         dst: self.get_xy(clink.src.x, clink.src.y, init_step, angle_south),
                         width: aw,
+                        opt: link.opt,
                     });
                 }
                 Animation::ToSrc => {
@@ -907,6 +972,7 @@ impl LinkContainer {
                         src: clink.dst,
                         dst: clink.src,
                         width: aw,
+                        opt: link.opt,
                     });
                 }
                 Animation::ToDst => {
@@ -915,6 +981,7 @@ impl LinkContainer {
                         src: clink.src,
                         dst: clink.dst,
                         width: aw,
+                        opt: link.opt,
                     });
                 }
             }
