@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::CanvasRenderingContext2d;
 use web_sys::{Document, Element};
 use web_sys::{
-    Event, HtmlCanvasElement, HtmlDivElement, MouseEvent, ResizeObserver, ResizeObserverEntry,
+    Event, HtmlCanvasElement, HtmlDivElement, PointerEvent, ResizeObserver, ResizeObserverEntry,
     WheelEvent,
 };
 
@@ -80,10 +80,7 @@ macro_rules! add_listen_callback {
             $target,
             EventListenerOptions::enable_prevent_default(),
             move |e: &Event| {
-                e.prevent_default();
-                e.stop_propagation();
-                if let Some(event) = e.dyn_ref::<MouseEvent>() {
-                    let p = Self::get_div_xy(&event, &div);
+                if let Some(p) = Targets::get_div_xy(e, &div) {
                     unsafe { (*ptr).$method(&p) };
                 }
             },
@@ -187,13 +184,13 @@ impl Targets {
             animations,
             highlight,
             render,
-            on_down: None,
             on_enter: None,
             on_leave: None,
-            on_move: None,
-            on_size: None,
+            on_down: None,
             on_up: None,
+            on_move: None,
             on_wheel: None,
+            on_size: None,
             screen_box: screen_box,
         };
         res.init_watchers()?;
@@ -257,18 +254,28 @@ impl Targets {
         self.on_wheel = None;
         self.on_size = None;
     }
-    fn get_div_xy(e: &MouseEvent, div: &HtmlDivElement) -> Point {
+    fn get_div_xy(e: &Event, div: &HtmlDivElement) -> Option<Point> {
+        e.prevent_default();
+        e.stop_propagation();
         let rect = div.get_bounding_client_rect();
-        let x = e.client_x() as f64 - rect.left();
-        let y = e.client_y() as f64 - rect.top();
-        Point { x, y }
+        if let Some(e) = e.dyn_ref::<PointerEvent>() {
+            let x = e.client_x() as f64 - rect.left();
+            let y = e.client_y() as f64 - rect.top();
+            return Some(Point { x, y });
+        }
+        None
     }
     pub fn init_watchers(&mut self) -> Result<(), JsValue> {
-        add_listen_callback!(self, "mousemove", on_move, mouse_move);
-        add_listen_callback!(self, "mouseup", on_up, mouse_up);
-        add_listen_callback!(self, "mousedown", on_down, mouse_down);
-        add_listen_callback!(self, "mouseleave", on_leave, mouse_leave);
-        add_listen_callback!(self, "mouseenter", on_enter, mouse_enter);
+        // mouse down
+        add_listen_callback!(self, "pointerdown", on_down, mouse_down);
+        // mouse up
+        add_listen_callback!(self, "pointerup", on_up, mouse_up);
+        // mouse move
+        add_listen_callback!(self, "pointermove", on_move, mouse_move);
+
+        // desktop only
+        add_listen_callback!(self, "pointerenter", on_leave, mouse_leave);
+        add_listen_callback!(self, "pointerleave", on_enter, mouse_enter);
         let ptr = self.render;
 
         self.on_wheel = Some(EventListener::new_with_options(

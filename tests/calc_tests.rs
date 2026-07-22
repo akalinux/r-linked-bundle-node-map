@@ -148,7 +148,7 @@ fn wanted_srceen_tests() {
         vec![ds.clone()]
     );
     let (src, _, _, _) = common_data();
-    calc.node_add(src.clone());
+    calc.node_add(src.clone(), false);
 
     let step = calc.indexer().step;
     assert_eq!(calc.wanted_screens(32, 32, &ZERO_TRANSFORM), vec![]);
@@ -258,9 +258,9 @@ fn move_nodes_test() {
     };
     let link_a = Link::new(0, 0, 1, 0, Animation::Both, l.clone());
     let mut calc = Calculator::new();
-    calc.box_add(node_box.clone());
-    calc.node_add(node_a.clone());
-    calc.node_add(node_b.clone());
+    calc.box_add(node_box.clone(), false);
+    calc.node_add(node_a.clone(), false);
+    calc.node_add(node_b.clone(), false);
     calc.link_add(link_a.clone());
     // baseline check
     let t = &ZERO_TRANSFORM;

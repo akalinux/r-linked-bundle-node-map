@@ -269,8 +269,8 @@ fn point_inside_tests() {
         label: String::from("test"),
         groups: Vec::new(),
     };
-    ns.insert(src.clone());
-    ns.insert(dst.clone());
+    ns.insert(src.clone(), false);
+    ns.insert(dst.clone(), false);
     let mut ops = Options::new();
     let mut animations = HashSet::new();
     let mut lc = LinkContainer::new(src.id, dst.id);
@@ -293,4 +293,8 @@ fn point_inside_tests() {
         lc.contains_point(&Point { x: 7.5, y: 7.5 }),
         Some(LinkContainsType::Link(link.clone()))
     );
+    assert!(!lc.get_link_render(link.id).is_none());
+    assert!(!lc.get_bundle_box(bundle.id).is_none());
+    assert!(lc.get_link_render(2000).is_none());
+    assert!(lc.get_bundle_box(2000).is_none());
 }

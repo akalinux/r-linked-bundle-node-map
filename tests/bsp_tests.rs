@@ -72,8 +72,8 @@ fn screen_idx_iter_tests() {
     assert_eq!(iter.next(), Some((vec![1], Vec::new(), vec![], screend)));
     assert!(iter.next().is_none());
     let mut ns = NodeStates::new(2);
-    ns.insert(src.clone());
-    ns.insert(dst.clone());
+    ns.insert(src.clone(), false);
+    ns.insert(dst.clone(), false);
     let mut opts = Options::new();
     let mut animations = HashSet::new();
     let mut link = LinkContainer::new(0, 1);
@@ -180,9 +180,9 @@ fn in_point_tests() {
     };
     let link_a = Link::new(0, 0, 1, 0, Animation::Both, l.clone());
     let mut ns = NodeStates::new(2);
-    ns.insert(node_a.clone());
-    ns.insert(node_b.clone());
-    ns.insert_box(node_box.clone());
+    ns.insert(node_a.clone(), false);
+    ns.insert(node_b.clone(), false);
+    ns.insert_box(node_box.clone(), false);
     let step = 10;
     let mut idx = ScreenIndex::new(step);
     let mut ls = LinkStates::new();

@@ -264,6 +264,10 @@ impl Node {
         self.inside_square(&self.get_center(), p, self.w, self.h)
     }
 
+    pub fn to_point(&mut self, p: &Point) {
+        self.x = p.x;
+        self.y = p.y;
+    }
     pub fn x_contains(&self, x: f64) -> bool {
         return !(x < self.get_min_x() || self.get_max_x() < x);
     }
@@ -285,6 +289,13 @@ impl Node {
         }
         return self.h;
     }
+    /// Clones the non geometry settings into this node.
+    pub fn merge(&mut self, node: &Self) {
+        self.label = node.label.clone();
+        self.opt = node.opt;
+        self.groups = node.groups.clone();
+    }
+
     #[wasm_bindgen(constructor)]
     pub fn new(
         x: f64,
@@ -446,29 +457,41 @@ impl NodeStates {
         }
     }
 
-    pub fn insert(&mut self, node: Node) -> Option<Node> {
+    pub fn insert(&mut self, node: Node, merge: bool) -> Option<Node> {
         if self.boxes.contains_key(&node.id) {
             panic!("Node: {}, is all ready listed as a box", node.id);
         }
         let res = self.node_updates.remove(&node.id);
-        if let Some(n) = res {
-            self.center.x -= n.x;
-            self.center.y -= n.y;
+        if let Some(mut n) = res {
             self.clear_node_grps(node.id, &n.groups);
+            if merge {
+                n.merge(&node);
+                self.node_updates.insert(n.id, n);
+            } else {
+                self.center.x -= n.x;
+                self.center.y -= n.y;
+                self.center.x += node.x;
+                self.center.y += node.y;
+            }
+        } else {
+            self.center.x += node.x;
+            self.center.y += node.y;
         }
-        self.center.x += node.x;
-        self.center.y += node.y;
         self.append_node_grps(node.id, &node.groups);
         return self.nodes.insert(node.id, node);
     }
 
-    pub fn insert_box(&mut self, node: Node) -> Option<Node> {
+    pub fn insert_box(&mut self, node: Node, merge: bool) -> Option<Node> {
         if self.nodes.contains_key(&node.id) {
             panic!("Box: {}, is all ready listed as a: node", node.id);
         }
         let res = self.box_updates.remove(&node.id);
-        if let Some(n) = res {
+        if let Some(mut n) = res {
             self.clear_node_grps(node.id, &n.groups);
+            if merge {
+                n.merge(&node);
+                self.box_updates.insert(n.id, n);
+            }
         }
         self.append_node_grps(node.id, &node.groups);
         return self.boxes.insert(node.id, node);
@@ -504,6 +527,17 @@ impl NodeStates {
             x: self.center.x / self.nodes.len() as f64,
             y: self.center.y / self.nodes.len() as f64,
         };
+    }
+    pub fn get_updates<'s>(&self) -> (Vec<&Node>, Vec<&Node>) {
+        let mut nodes = Vec::with_capacity(self.node_updates.len());
+        let mut boxes = Vec::with_capacity(self.box_updates.len());
+        for node in self.node_updates.values() {
+            nodes.push(node);
+        }
+        for node in self.box_updates.values() {
+            boxes.push(node);
+        }
+        (nodes, boxes)
     }
     pub fn update(&mut self, node: Node) -> Option<Node> {
         if self.boxes.contains_key(&node.id) {

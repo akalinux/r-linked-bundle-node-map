@@ -74,6 +74,7 @@ pub struct Options {
 #[wasm_bindgen(getter_with_clone)]
 #[derive(Clone, Debug)]
 pub struct BulkLoad {
+    pub merge: bool,
     pub link_opts: Vec<LinkOpt>,
     pub bundle_ops: Vec<BundleOpt>,
     pub node_ops: Vec<NodeOpt>,
@@ -88,6 +89,7 @@ pub struct BulkLoad {
 impl BulkLoad {
     #[wasm_bindgen(constructor)]
     pub fn new(
+        merge: bool,
         link_opts: Vec<LinkOpt>,
         bundle_ops: Vec<BundleOpt>,
         node_ops: Vec<NodeOpt>,
@@ -98,6 +100,7 @@ impl BulkLoad {
         bundles: Vec<Bundle>,
     ) -> Self {
         Self {
+            merge,
             bundle_ops,
             node_ops,
             lc_ops,
@@ -110,6 +113,7 @@ impl BulkLoad {
     }
     pub fn nlb(nodes: Vec<Node>, links: Vec<Link>, bundles: Vec<Bundle>) -> Self {
         Self::new(
+            true,
             Vec::new(),
             Vec::new(),
             Vec::new(),
@@ -189,11 +193,28 @@ calc_bulk!(LinkContainerOpt, lc);
 calc_bulk!(LinkOpt, link);
 calc_bulk!(BundleOpt, bundle);
 
+#[wasm_bindgen(inspectable, getter_with_clone)]
+pub struct MouseImpacted {
+    pub nodes: Vec<u32>,
+    pub boxes: Vec<u32>,
+    pub bundles: Vec<u32>,
+    pub links: Vec<u32>,
+}
+
+#[wasm_bindgen]
+pub enum MouseEvent {
+    CanvasMove(Transform),
+    CanvasScale(Transform),
+    Moved(MouseImpacted),
+    MouseOver(MouseImpacted),
+}
 impl CalculatorTrait for Calculator {}
 
 impl Calculator {
-    pub fn move_nodes(&mut self, node_ids: &[u32], p: &Point, use_groups: bool) {
+    pub fn move_nodes(&mut self, node_ids: &[u32], p: &Point, use_groups: bool) -> MouseImpacted {
         let idx = &mut self.indexer;
+        let mut boxes = Vec::new();
+        let mut nodes = Vec::new();
 
         let mut ls = HashSet::new();
         let nl = &self.links.node_links;
@@ -205,6 +226,11 @@ impl Calculator {
                     Some(n) => (src, ss) = n,
                     _ => break,
                 };
+                match &ss {
+                    ScreenSlot::Node(_) => nodes.push(src.id),
+                    ScreenSlot::Box(_) => boxes.push(src.id),
+                    _ => (),
+                }
                 iter.nodes
                     .update(Self::node_updates(idx, p, src, nl, &mut ls, ss));
             }
@@ -217,9 +243,11 @@ impl Calculator {
                 known.insert(*id);
                 let node;
                 if let Some(src) = self.nodes.get_box(*id) {
-                    node = Self::node_updates(idx, p, src, nl, &mut ls, ScreenSlot::Box(*id))
+                    boxes.push(*id);
+                    node = Self::node_updates(idx, p, src, nl, &mut ls, ScreenSlot::Box(*id));
                 } else if let Some(src) = self.nodes.get(*id) {
-                    node = Self::node_updates(idx, p, src, nl, &mut ls, ScreenSlot::Node(*id))
+                    nodes.push(*id);
+                    node = Self::node_updates(idx, p, src, nl, &mut ls, ScreenSlot::Node(*id));
                 } else {
                     continue;
                 }
@@ -227,13 +255,19 @@ impl Calculator {
             }
         }
 
-        let nodes = &self.nodes;
+        let ns = &self.nodes;
         let options = &mut self.options;
         let animations = &mut self.animations;
         for lid in ls.iter() {
-            let link = self.links.get_mut(&lid).unwrap();
-            link.update(nodes, options, animations);
+            let link = self.links.get_mut(lid).unwrap();
+            link.update(ns, options, animations);
             idx.index(ScreenSlot::Link(*lid), link.screen_index(idx.step, true));
+        }
+        MouseImpacted {
+            nodes,
+            boxes,
+            bundles: vec![],
+            links: vec![],
         }
     }
     pub fn on_screen<'s>(&'s self, width: u32, height: u32, t: &Transform) -> OnScreen<'s> {
@@ -330,10 +364,11 @@ impl Calculator {
         self.bundle_opt_bulk(bl.bundle_ops);
         self.links.bulk = true;
         self.nodes.reserve(bl.nodes.len());
+        let merge = bl.merge;
 
         for node in bl.nodes {
             let id = node.id;
-            self.node_add(node);
+            self.node_add(node, merge);
             self.links.update_links(
                 id,
                 &mut self.indexer,
@@ -354,7 +389,7 @@ impl Calculator {
         }
 
         for b in bl.boxes {
-            self.box_add(b);
+            self.box_add(b, merge);
         }
         self.finish_bulk_load();
     }
@@ -388,10 +423,10 @@ impl Calculator {
         let screen_b: i64 = link_b * 4;
         return Self::new_with_settings(screen_b, 256);
     }
-    pub fn box_add(&mut self, node: Node) -> Option<Node> {
+    pub fn box_add(&mut self, node: Node, merge: bool) -> Option<Node> {
         let new = Some(node.index_bound(self.indexer.step));
         let id = node.id;
-        let res = self.nodes.insert_box(node);
+        let res = self.nodes.insert_box(node, merge);
         let old;
         match &res {
             Some(o) => old = Some(o.index_bound(self.indexer.step)),
@@ -412,7 +447,7 @@ impl Calculator {
         }
         res
     }
-    pub fn node_add(&mut self, node: Node) -> Option<Node> {
+    pub fn node_add(&mut self, node: Node, merge: bool) -> Option<Node> {
         let old;
         match self.nodes.get(node.id) {
             Some(node) => old = Some(node.index_bound(self.indexer.step)),
@@ -424,7 +459,7 @@ impl Calculator {
             (old, Some(node.index_bound(self.indexer.step))),
         );
         let node_id = node.id;
-        let res = self.nodes.insert(node);
+        let res = self.nodes.insert(node, merge);
         if self.links.bulk {
             return res;
         }

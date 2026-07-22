@@ -20,7 +20,7 @@ web-sys = {
         'HtmlCanvasElement',
         "HtmlImageElement",
         "HtmlDivElement",
-        'MouseEvent',
+        'PointerEvent',
         'Node',
         'Window',
        "ResizeObserver", "ResizeObserverEntry" 

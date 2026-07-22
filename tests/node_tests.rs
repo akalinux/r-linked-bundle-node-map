@@ -1,6 +1,7 @@
 #![cfg(test)]
 use linked_bundle_node_map::{
     CalculatorTrait, ContainsPoint, FullBox, Point, PointBox,
+    constants::ZERO_POINT,
     node::{Node, NodeStates},
 };
 
@@ -132,9 +133,9 @@ fn get_related_node_tests() {
         opt: 0,
         groups: Vec::from([0, 3]),
     };
-    nodes.insert(node_a.clone());
-    nodes.insert(node_b.clone());
-    nodes.insert(node_c.clone());
+    nodes.insert(node_a.clone(), false);
+    nodes.insert(node_b.clone(), false);
+    nodes.insert(node_c.clone(), false);
     let mut res = Vec::new();
     for node in nodes.get_related(&[0, 1]) {
         res.push(node.0.id);
@@ -148,7 +149,7 @@ fn get_related_node_tests() {
         res.push(node.0.id);
     }
     assert_eq!(res, vec![1]);
-    nodes.insert(node_a.clone());
+    nodes.insert(node_a.clone(), false);
     res.clear();
     for node in nodes.get_related(&[0]) {
         res.push(node.0.id);
@@ -158,7 +159,7 @@ fn get_related_node_tests() {
     // box layer testing
     res.clear();
     nodes.remove(0);
-    nodes.insert_box(node_a.clone());
+    nodes.insert_box(node_a.clone(), false);
     for node in nodes.get_related(&[0]) {
         res.push(node.0.id);
     }
@@ -201,17 +202,17 @@ fn center_tests() {
         opt: 0,
         groups: Vec::from([0, 1]),
     };
-    ns.insert(a.clone());
+    ns.insert(a.clone(), false);
     assert_eq!(ns.get_center(), Point { x: 0.0, y: 0.0 });
-    ns.insert(b.clone());
+    ns.insert(b.clone(), false);
     assert_eq!(ns.get_center(), Point { x: 2.5, y: 2.5 });
     ns.update(b.transform(5.0, 5.0, 0.0, 0.0));
     assert_eq!(ns.get_center(), Point { x: 5.0, y: 5.0 });
-    ns.insert(b.clone());
+    ns.insert(b.clone(), false);
     assert_eq!(ns.get_center(), Point { x: 2.5, y: 2.5 });
     ns.remove(b.id);
     assert_eq!(ns.get_center(), Point { x: 0.0, y: 0.0 });
-    ns.insert_box(c);
+    ns.insert_box(c, false);
 }
 
 #[test]
@@ -228,8 +229,8 @@ fn add_node_as_box_fail() {
         groups: Vec::from([0, 1]),
     };
     let mut ns = NodeStates::new(2);
-    ns.insert(a.clone());
-    ns.insert_box(a.clone());
+    ns.insert(a.clone(), false);
+    ns.insert_box(a.clone(), false);
 }
 
 #[test]
@@ -246,8 +247,8 @@ fn add_box_as_node_fail() {
         groups: Vec::from([0, 1]),
     };
     let mut ns = NodeStates::new(2);
-    ns.insert_box(a.clone());
-    ns.insert(a.clone());
+    ns.insert_box(a.clone(), false);
+    ns.insert(a.clone(), false);
 }
 
 #[test]
@@ -328,4 +329,47 @@ fn contains_tests() {
     };
     assert!(a.overlaps(&a));
     assert!(!a.overlaps(&b));
+}
+
+#[test]
+fn merge_tests() {
+    let mut ns = NodeStates::new(2);
+    assert_eq!(ns.get_center(), Point { x: 0.0, y: 0.0 });
+    let mut node = Node::new(0.0, 0.0, 2.0, 2.0, 0, String::from("testing"), 0, vec![]);
+    ns.insert(node.clone(), false);
+    assert_eq!(ns.get_center(), ZERO_POINT);
+    node.x = 10.0;
+    node.y = 10.0;
+    ns.update(node.clone());
+    let old = node.get_center();
+    assert_eq!(ns.get_center(), old.clone());
+    node.x = 5.0;
+    node.y = 5.0;
+    node.label = String::from("test");
+    node.opt = 1;
+    node.groups = vec![2, 3, 4];
+    ns.insert(node.clone(), true);
+
+    assert_eq!(ns.get_center(), old.clone());
+    node.x = 10.0;
+    node.y = 10.0;
+    assert_eq!(&ns.get(0).unwrap().groups, &node.groups);
+    assert_eq!(&ns.get(0).unwrap().opt, &node.opt);
+    assert_eq!(&ns.get(0).unwrap().label, &node.label);
+    assert_eq!(&ns.get(0).unwrap().get_center(), &old);
+    node.x = old.x;
+    node.y = old.y;
+    assert_eq!(ns.get_updates(), (vec![&node], vec![]));
+    ns.remove(node.id);
+    assert_eq!(ns.get_updates(), (vec![], vec![]));
+    assert_eq!(ns.get_center(), ZERO_POINT);
+    ns.insert_box(node.clone(), true);
+    assert_eq!(ns.get_center(), ZERO_POINT);
+    node.to_point(&ZERO_POINT);
+    ns.update(node.clone());
+    assert_eq!(ns.get_updates(), (vec![], vec![&node]));
+    assert_eq!(ns.get_box(0).unwrap().get_center(), ZERO_POINT);
+    node.to_point(&old);
+    ns.insert_box(node.clone(), true);
+    assert_eq!(ns.get_updates(), (vec![], vec![&node]));
 }

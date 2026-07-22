@@ -3,7 +3,7 @@ pub mod targets;
 use crate::{
     ImgSrc, Move, Point, RenderBox, ScreenBox, Transform,
     bsp::PointLookupResult,
-    calc::{Calculator, Options},
+    calc::{Calculator, MouseEvent, MouseImpacted, Options},
     constants::{
         DEFAULT_ANIMATION_DASHES, DEFAULT_CANVAS_STYLE, DEFAULT_DIV_STYLE, DEFAULT_FONT_FAMILY,
         DEFAULT_HIGHLIGHT_ALPHA, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_HIGHLIGHT_SCALE,
@@ -18,10 +18,10 @@ use crate::{
 };
 use gloo::timers::callback::Timeout;
 use js_sys::Array;
+use js_sys::Function;
 use pastey::paste;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use web_sys::CanvasRenderingContext2d;
-
 pub enum CurrentTarget {
     Node((Move, Node)),
     Box((Move, Node)),
@@ -47,8 +47,7 @@ pub struct Render {
     animation_order: Vec<u64>,
 }
 
-#[wasm_bindgen(inspectable)]
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen(inspectable, getter_with_clone)]
 #[derive(Clone, Debug)]
 pub struct RenderOpt {
     pub wheel_move: f64,
@@ -60,6 +59,7 @@ pub struct RenderOpt {
     pub highlight_alpha: f64,
     pub highlight_color: String,
     pub bulk_img_update: bool,
+    pub callback: Option<Function>,
 }
 
 #[wasm_bindgen]
@@ -76,6 +76,7 @@ impl RenderOpt {
             highlight_alpha: DEFAULT_HIGHLIGHT_ALPHA,
             highlight_color: String::from(DEFAULT_HIGHLIGHT_COLOR),
             bulk_img_update: true,
+            callback: None,
         }
     }
 }
@@ -114,6 +115,7 @@ render_opt!(text_align, String);
 render_opt!(timeout, u32);
 render_opt!(animation_dashes, Vec<f64>);
 render_opt!(bulk_img_update, bool);
+render_opt!(callback, Option<Function>);
 
 #[wasm_bindgen]
 impl Render {
@@ -274,7 +276,14 @@ impl Render {
     }
 
     pub fn mouse_up(&mut self, p: &Point) {
-        self.mouse_move(p);
+        match &self.ct {
+            CurrentTarget::NoTarget => return,
+            _ => {
+                if let Some(res) = self.mouse_move(p) {
+                    self.hanlde_mouse_event(res, p);
+                }
+            }
+        }
         self.ct = CurrentTarget::NoTarget;
     }
     pub fn mouse_down(&mut self, p: &Point) {
@@ -289,8 +298,16 @@ impl Render {
         self.current_timeout = Some(Timeout::new(self.ops.timeout, cb));
     }
 
-    pub fn mouse_leave(&mut self, _p: &Point) {
+    pub fn mouse_leave(&mut self, p: &Point) {
         self.current_timeout = None;
+        match &self.ct {
+            CurrentTarget::NoTarget => return,
+            _ => {
+                if let Some(res) = self.mouse_move(p) {
+                    self.hanlde_mouse_event(res, p);
+                }
+            }
+        }
         self.ct = CurrentTarget::NoTarget;
     }
 
@@ -298,45 +315,77 @@ impl Render {
         self.build_timeout(p);
     }
 
-    pub fn mouse_move(&mut self, p: &Point) {
+    pub fn mouse_move(&mut self, p: &Point) -> Option<MouseEvent> {
         let calc = self.calc;
         self.current_timeout = None;
+        let res;
         unsafe {
             match &mut self.ct {
                 CurrentTarget::NoTarget => {
                     self.build_timeout(p);
-                    return;
+                    return None;
                 }
                 CurrentTarget::Bundle((m, b)) => {
                     m.transform = self.t;
-                    (*calc).move_nodes(&[b.src, b.dst], &m.stop(p), false)
+                    res = Some(MouseEvent::Moved((*calc).move_nodes(
+                        &[b.src, b.dst],
+                        &m.stop(p),
+                        false,
+                    )));
                 }
                 CurrentTarget::Link((m, l)) => {
                     m.transform = self.t;
-                    (*calc).move_nodes(&[l.src, l.dst], &m.stop(p), false)
+                    res = Some(MouseEvent::Moved((*calc).move_nodes(
+                        &[l.src, l.dst],
+                        &m.stop(p),
+                        false,
+                    )));
                 }
                 CurrentTarget::Node((m, n)) => {
                     m.transform = self.t;
-                    (*calc).move_nodes(&[n.id], &m.stop(p), true)
+                    res = Some(MouseEvent::Moved((*calc).move_nodes(
+                        &[n.id],
+                        &m.stop(p),
+                        true,
+                    )));
                 }
                 CurrentTarget::Box((m, n)) => {
                     m.transform = self.t;
-                    (*calc).move_nodes(&[n.id], &m.stop(p), true)
+                    res = Some(MouseEvent::Moved((*calc).move_nodes(
+                        &[n.id],
+                        &m.stop(p),
+                        true,
+                    )));
                 }
                 CurrentTarget::Screen(m) => {
                     m.transform = self.t;
                     m.stop(p);
                     self.t.x = m.start.x;
                     self.t.y = m.start.y;
+                    res = Some(MouseEvent::CanvasMove(self.t));
                 }
             };
         };
 
         self.rndr();
+        res
     }
     fn rndr(&mut self) {
-        match self.render() {
-            _ => (),
+        let _ = self.render();
+    }
+
+    fn hanlde_mouse_event(&self, i: MouseEvent, p: &Point) {
+        if let Some(cb) = &self.ops.callback {
+            let this = JsValue::null();
+            let v = JsValue::from(i);
+            let jsp = JsValue::from(*p);
+            match cb.call2(&this, &v, &jsp) {
+                Err(e) => match e.as_string() {
+                    Some(msg) => panic!("{}", msg),
+                    None => panic!("Unknown callback error!"),
+                },
+                Ok(_) => {}
+            }
         }
     }
     pub fn render_highlight(&mut self, p: &Point) {
@@ -349,20 +398,37 @@ impl Render {
             return;
         }
         if let Some(lookup) = res {
+            let mut nodes = Vec::new();
+            let mut boxes = Vec::new();
+            let mut bundles = Vec::new();
+            let mut links = Vec::new();
             match lookup {
-                PointLookupResult::Box(node) | PointLookupResult::Node(node) => {
+                PointLookupResult::Box(node) => {
                     self.draw_node(
                         &highlight,
                         &node,
                         unsafe { (*calc).get_node(&node.opt) },
                         true,
                     );
+                    boxes.push(node.id);
+                }
+                PointLookupResult::Node(node) => {
+                    self.draw_node(
+                        &highlight,
+                        &node,
+                        unsafe { (*calc).get_node(&node.opt) },
+                        true,
+                    );
+                    nodes.push(node.id);
                 }
                 PointLookupResult::Link(l) => {
                     let ops = unsafe { (*calc).options_mut() };
                     let src;
                     let dst;
                     let lc = unsafe { (*calc).links().get(&l.link_id()) }.unwrap();
+                    nodes = Vec::from([l.src, l.dst]);
+                    links.push(l.id);
+
                     unsafe {
                         src = (*self.calc).nodes().get(l.src).unwrap();
                         dst = (*self.calc).nodes().get(l.dst).unwrap();
@@ -390,10 +456,14 @@ impl Render {
                         src = (*self.calc).nodes().get(b.src).unwrap();
                         dst = (*self.calc).nodes().get(b.dst).unwrap();
                     };
+                    nodes = Vec::from([b.src, b.dst]);
+                    bundles.push(b.id);
                     let lc = unsafe { (*calc).links().get(&b.link_id()) }.unwrap();
                     for lid in &b.links {
                         if let Some(l) = lc.get_link_render(*lid) {
                             let width = self.ops.highlight_scale * l.2;
+                            links.push(*lid);
+
                             self.draw_line(
                                 &highlight,
                                 &l.0,
@@ -415,6 +485,15 @@ impl Render {
                     }
                 }
             }
+            self.hanlde_mouse_event(
+                MouseEvent::MouseOver(MouseImpacted {
+                    nodes,
+                    links,
+                    boxes,
+                    bundles,
+                }),
+                p,
+            );
         }
     }
     pub fn zoom_in(&mut self) {

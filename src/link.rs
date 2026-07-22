@@ -783,7 +783,7 @@ pub enum LinkContainsType {
 impl LinkContainer {
     pub fn get_bundle_box(&self, id: u32) -> Option<BundleRenderBox> {
         if let Some(cl) = &self.link_src {
-            for pos in 0..=self.bundles.len() {
+            for pos in 0..self.bundles.len() {
                 let b = &self.bundles[pos];
                 if id == b.id {
                     let p = cl.cl.bundles[pos];
@@ -800,7 +800,7 @@ impl LinkContainer {
     }
     pub fn get_link_render(&self, id: u32) -> Option<(Point, Point, f64, u32)> {
         if let Some(lc) = &self.link_src {
-            for pos in 0..=self.links.len() {
+            for pos in 0..self.links.len() {
                 let link = &self.links[pos];
                 if id == link.id {
                     let set = lc.cl.links[pos];
