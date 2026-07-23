@@ -1,5 +1,3 @@
-use wasm_bindgen::prelude::wasm_bindgen;
-
 use crate::{
     CalculatorTrait, Point, ScreenBox, Transform,
     link::{Bundle, Link, LinkContainsType, LinkStates},
@@ -315,7 +313,6 @@ pub enum ScreenSlot {
     Link(u64),
 }
 
-#[wasm_bindgen]
 #[derive(Debug, PartialEq)]
 pub enum PointLookupResult {
     Node(Node),
@@ -370,10 +367,29 @@ impl ScreenIndex {
         if idx_x.is_empty() {
             return None;
         }
-        let (start_x, y_t) = idx_x.first_key_value().unwrap();
-        let (start_y, _) = y_t.first_key_value().unwrap();
-        let (end_x, y_t) = idx_x.last_key_value().unwrap();
-        let (end_y, _) = y_t.last_key_value().unwrap();
+        let (start_x, mut y_t);
+        match idx_x.first_key_value() {
+            Some(a) => (start_x, y_t) = a,
+            None => return None,
+        }
+        let start_y;
+        match y_t.first_key_value() {
+            Some((y, _)) => start_y = y,
+            None => return None,
+        };
+        let end_x;
+        match idx_x.last_key_value() {
+            Some((a, b)) => {
+                end_x = a;
+                y_t = b
+            }
+            None => return None,
+        }
+        let end_y;
+        match y_t.last_key_value() {
+            Some((a, _)) => end_y = a,
+            None => return None,
+        }
         let end_x = *end_x + self.step;
         let end_y = *end_y + self.step;
         let width = (end_x - start_x) as u32;

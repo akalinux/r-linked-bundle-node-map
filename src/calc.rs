@@ -8,6 +8,7 @@ use crate::{
 use pastey::paste;
 use std::collections::{HashMap, HashSet};
 use std::mem;
+use std::process;
 use wasm_bindgen::prelude::*;
 
 pub struct BacklogUpdates {
@@ -15,10 +16,10 @@ pub struct BacklogUpdates {
     pub links: HashSet<u64>,
 }
 impl BacklogUpdates {
-    pub fn new(size: usize) -> Self {
+    pub fn new() -> Self {
         return Self {
-            nodes: HashSet::with_capacity(size),
-            links: HashSet::with_capacity(size),
+            nodes: HashSet::new(),
+            links: HashSet::new(),
         };
     }
 
@@ -43,7 +44,12 @@ macro_rules! build_opts {
                 // not even the default option exists!
                 let opt = <$t>::defaults();
                 self.$field.insert(opt.id.clone(), opt);
-                return unsafe { mem::transmute(self.$field.get(&0).unwrap()) };
+                let v;
+                match self.$field.get(&0) {
+                    Some(a) => v = a,
+                    None => process::abort(),
+                };
+                return unsafe { mem::transmute(v) };
             }
             pub fn $del(&mut self, id: &u32) -> Option<$t> {
                 return self.$field.remove(id);
@@ -67,18 +73,17 @@ pub struct Options {
     pub link: HashMap<u32, LinkOpt>,
     pub bundle: HashMap<u32, BundleOpt>,
     pub node: HashMap<u32, NodeOpt>,
-    pub lc: HashMap<u32, LinkContainerOpt>,
+    pub lc: LinkContainerOpt,
 }
 
-#[wasm_bindgen(inspectable)]
-#[wasm_bindgen(getter_with_clone)]
-#[derive(Clone, Debug)]
+#[wasm_bindgen(inspectable, getter_with_clone)]
+#[derive(Clone)]
 pub struct BulkLoad {
     pub merge: bool,
     pub link_opts: Vec<LinkOpt>,
     pub bundle_ops: Vec<BundleOpt>,
     pub node_ops: Vec<NodeOpt>,
-    pub lc_ops: Vec<LinkContainerOpt>,
+    pub lc_ops: LinkContainerOpt,
     pub nodes: Vec<Node>,
     pub boxes: Vec<Node>,
     pub links: Vec<Link>,
@@ -90,13 +95,13 @@ impl BulkLoad {
     #[wasm_bindgen(constructor)]
     pub fn new(
         merge: bool,
+        links: Vec<Link>,
         link_opts: Vec<LinkOpt>,
         bundle_ops: Vec<BundleOpt>,
+        lc_ops: LinkContainerOpt,
         node_ops: Vec<NodeOpt>,
-        lc_ops: Vec<LinkContainerOpt>,
         nodes: Vec<Node>,
         boxes: Vec<Node>,
-        links: Vec<Link>,
         bundles: Vec<Bundle>,
     ) -> Self {
         Self {
@@ -114,31 +119,34 @@ impl BulkLoad {
     pub fn nlb(nodes: Vec<Node>, links: Vec<Link>, bundles: Vec<Bundle>) -> Self {
         Self::new(
             true,
+            links,
             Vec::new(),
             Vec::new(),
-            Vec::new(),
+            LinkContainerOpt::defaults(),
             Vec::new(),
             nodes,
             Vec::new(),
-            links,
             bundles,
         )
     }
 }
 impl Options {
+    pub fn get_lc(&self) -> &LinkContainerOpt {
+        &self.lc
+    }
     pub fn new() -> Self {
         return Self {
-            link: HashMap::with_capacity(10),
-            bundle: HashMap::with_capacity(10),
-            node: HashMap::with_capacity(10),
-            lc: HashMap::with_capacity(10),
+            link: HashMap::new(),
+            bundle: HashMap::new(),
+            node: HashMap::new(),
+            lc: LinkContainerOpt::defaults(),
         };
     }
 }
 build_opts!(LinkOpt, link, get_link, set_link, rm_link);
 build_opts!(BundleOpt, bundle, get_bundle, set_bundle, rm_bundle);
 build_opts!(NodeOpt, node, get_node, set_node, rm_node);
-build_opts!(LinkContainerOpt, lc, get_lc, set_lc, rm_lc);
+//build_opts!(LinkContainerOpt, lc, get_lc, set_lc, rm_lc);
 
 #[wasm_bindgen]
 pub struct Calculator {
@@ -189,7 +197,7 @@ macro_rules! calc_bulk {
     };
 }
 calc_bulk!(NodeOpt, node);
-calc_bulk!(LinkContainerOpt, lc);
+//calc_bulk!(LinkContainerOpt, lc);
 calc_bulk!(LinkOpt, link);
 calc_bulk!(BundleOpt, bundle);
 
@@ -211,6 +219,9 @@ pub enum MouseEvent {
 impl CalculatorTrait for Calculator {}
 
 impl Calculator {
+    pub fn in_point(&self, p: &Point, t: &Transform) -> Option<PointLookupResult> {
+        self.indexer.in_point(p, t, &self.nodes, &self.links)
+    }
     pub fn move_nodes(&mut self, node_ids: &[u32], p: &Point, use_groups: bool) -> MouseImpacted {
         let idx = &mut self.indexer;
         let mut boxes = Vec::new();
@@ -259,7 +270,11 @@ impl Calculator {
         let options = &mut self.options;
         let animations = &mut self.animations;
         for lid in ls.iter() {
-            let link = self.links.get_mut(lid).unwrap();
+            let link;
+            match self.links.get_mut(lid) {
+                Some(l) => link = l,
+                None => process::abort(),
+            }
             link.update(ns, options, animations);
             idx.index(ScreenSlot::Link(*lid), link.screen_index(idx.step, true));
         }
@@ -279,8 +294,15 @@ impl Calculator {
     }
 
     pub unsafe fn get_src_dst_center(&self, src: u32, dst: u32) -> Point {
-        let a = self.nodes.get(src).unwrap();
-        let b = self.nodes.get(dst).unwrap();
+        let (a, b);
+        match self.nodes.get(src) {
+            Some(x) => a = x,
+            None => process::abort(),
+        }
+        match self.nodes.get(dst) {
+            Some(x) => b = x,
+            None => process::abort(),
+        }
         Point {
             x: (a.x + b.x) * 0.5,
             y: (a.y + b.y) * 0.5,
@@ -315,9 +337,6 @@ impl Calculator {
         };
         node
     }
-}
-#[wasm_bindgen]
-impl Calculator {
     pub fn current_screen(&self) -> Option<ScreenBox> {
         self.indexer.max_screen()
     }
@@ -345,20 +364,22 @@ impl Calculator {
         }
         return res;
     }
-
+}
+#[wasm_bindgen]
+impl Calculator {
     pub fn new_with_settings(screen_mouse_b: i64, size: usize) -> Self {
         return Self {
             links: LinkStates::new(),
             animations: HashSet::with_capacity(size),
             nodes: NodeStates::new(size),
-            backlog: BacklogUpdates::new(size),
+            backlog: BacklogUpdates::new(),
             indexer: ScreenIndex::new(screen_mouse_b),
             options: Options::new(),
         };
     }
 
     pub fn bulk_load(&mut self, bl: BulkLoad) {
-        self.lc_opt_bulk(bl.lc_ops);
+        self.options.lc = bl.lc_ops;
         self.node_opt_bulk(bl.node_ops);
         self.link_opt_bulk(bl.link_opts);
         self.bundle_opt_bulk(bl.bundle_ops);
@@ -408,7 +429,6 @@ impl Calculator {
             &mut self.indexer,
         );
 
-        self.options.lc.shrink_to_fit();
         self.options.link.shrink_to_fit();
         self.options.node.shrink_to_fit();
         self.options.bundle.shrink_to_fit();
@@ -534,9 +554,5 @@ impl Calculator {
             &mut self.indexer,
             &mut self.backlog,
         );
-    }
-
-    pub fn in_point(&self, p: &Point, t: &Transform) -> Option<PointLookupResult> {
-        self.indexer.in_point(p, t, &self.nodes, &self.links)
     }
 }

@@ -188,7 +188,7 @@ fn in_point_tests() {
     let mut ls = LinkStates::new();
     let mut ops = Options::new();
     let mut animations = HashSet::new();
-    let mut backlog = BacklogUpdates::new(2);
+    let mut backlog = BacklogUpdates::new();
     idx.index(ScreenSlot::Node(0), (None, Some(node_a.index_bound(step))));
     idx.index(ScreenSlot::Node(1), (None, Some(node_b.index_bound(step))));
     idx.index(ScreenSlot::Box(2), (None, Some(node_box.index_bound(step))));

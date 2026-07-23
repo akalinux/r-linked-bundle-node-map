@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
-    mem,
+    mem, process,
 };
 
 use wasm_bindgen::prelude::*;
@@ -18,8 +18,7 @@ pub enum LabelPosition {
     Center,
     Bottom,
 }
-#[wasm_bindgen(inspectable)]
-#[wasm_bindgen(getter_with_clone)]
+#[wasm_bindgen(inspectable, getter_with_clone)]
 #[derive(Clone, Debug)]
 pub struct Node {
     pub x: f64,
@@ -86,7 +85,10 @@ impl PartialOrd for Node {
 impl Eq for Node {}
 impl Ord for Node {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        match self.partial_cmp(other) {
+            Some(v) => return v,
+            None => process::abort(),
+        }
     }
 }
 pub struct GetRelatedNodes<'n> {
@@ -129,7 +131,11 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
         if todo.is_empty() {
             return None;
         }
-        let next = todo.pop().unwrap();
+        let next;
+        match todo.pop() {
+            Some(v) => next = v,
+            None => process::abort(),
+        }
         let known_nodes = &mut self.known_nodes;
         let known_groups = &mut self.known_groups;
         let nodes = &self.nodes;
@@ -143,7 +149,8 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
                 res = n;
                 ss = ScreenSlot::Node(n.id)
             } else {
-                panic!("Failed to lookup Id: {}", next);
+                // in this case.. something went wroing.. so we just give up here!
+                return None;
             }
             return Some((unsafe { mem::transmute(res) }, ss));
         }
@@ -153,7 +160,7 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
         } else if let Some(n) = self.nodes.get(next) {
             groups = &n.groups
         } else {
-            panic!("Failed to lookup Id: {}", next);
+            return None;
         }
 
         todo.reserve(groups.len());
@@ -230,6 +237,9 @@ impl NodeOpt {
             label_position,
         }
     }
+}
+
+impl NodeOpt {
     pub fn defaults() -> Self {
         return Self {
             id: 0,
@@ -255,11 +265,38 @@ impl FullBox for Node {
     }
 }
 
-#[wasm_bindgen]
 impl Node {
     pub fn get_center(&self) -> Point {
         Point::new(self.x, self.y)
     }
+}
+
+#[wasm_bindgen]
+impl Node {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        id: u32,
+        label: String,
+        opt: u32,
+        groups: Vec<u32>,
+    ) -> Self {
+        return Self {
+            x,
+            y,
+            w,
+            h,
+            id,
+            label,
+            opt,
+            groups,
+        };
+    }
+}
+impl Node {
     pub fn in_point(&self, p: &Point) -> bool {
         self.inside_square(&self.get_center(), p, self.w, self.h)
     }
@@ -294,29 +331,6 @@ impl Node {
         self.label = node.label.clone();
         self.opt = node.opt;
         self.groups = node.groups.clone();
-    }
-
-    #[wasm_bindgen(constructor)]
-    pub fn new(
-        x: f64,
-        y: f64,
-        w: f64,
-        h: f64,
-        id: u32,
-        label: String,
-        opt: u32,
-        groups: Vec<u32>,
-    ) -> Self {
-        return Self {
-            x,
-            y,
-            w,
-            h,
-            id,
-            label,
-            opt,
-            groups,
-        };
     }
 
     pub fn transform(&self, x: f64, y: f64, w: f64, h: f64) -> Self {
@@ -459,7 +473,7 @@ impl NodeStates {
 
     pub fn insert(&mut self, node: Node, merge: bool) -> Option<Node> {
         if self.boxes.contains_key(&node.id) {
-            panic!("Node: {}, is all ready listed as a box", node.id);
+            return None;
         }
         let res = self.node_updates.remove(&node.id);
         if let Some(mut n) = res {
@@ -483,7 +497,7 @@ impl NodeStates {
 
     pub fn insert_box(&mut self, node: Node, merge: bool) -> Option<Node> {
         if self.nodes.contains_key(&node.id) {
-            panic!("Box: {}, is all ready listed as a: node", node.id);
+            return None;
         }
         let res = self.box_updates.remove(&node.id);
         if let Some(mut n) = res {

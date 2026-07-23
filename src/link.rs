@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    mem,
+    mem, process,
 };
 
 use wasm_bindgen::prelude::*;
@@ -20,7 +20,7 @@ use crate::{
 pub struct LinkStates {
     pub bulk: bool,
     pub links: HashMap<u64, LinkContainer>,
-    pub updates: HashMap<u64, LinkContainer>,
+    //pub updates: HashMap<u64, LinkContainer>,
     pub node_links: HashMap<u32, HashSet<u64>>, // mapping of Node instances to LinkContainer instances
     pub bundle_links: HashMap<u32, HashSet<u64>>, // mapping of Bundle instances to LinkContainer instances
     pub link_links: HashMap<u32, HashSet<u64>>, // mapping of Link instances to LinkContainer instances
@@ -37,7 +37,7 @@ impl LinkStates {
         Self {
             bulk: false,
             links: HashMap::new(),
-            updates: HashMap::new(),
+            //updates: HashMap::new(),
             node_links: HashMap::new(),
             bundle_links: HashMap::new(),
             link_links: HashMap::new(),
@@ -51,7 +51,7 @@ impl LinkStates {
     }
     pub fn shrink_to_fit(&mut self) {
         self.links.shrink_to_fit();
-        self.updates.shrink_to_fit();
+        //self.updates.shrink_to_fit();
         self.node_links.shrink_to_fit();
         self.bundle_links.shrink_to_fit();
         self.link_links.shrink_to_fit();
@@ -101,9 +101,10 @@ impl LinkStates {
             Some(nl) => {
                 for i in nl.iter() {
                     let lc;
-                    if let Some(l) = self.updates.get_mut(i) {
+                    /*if let Some(l) = self.updates.get_mut(i) {
                         lc = l;
-                    } else if let Some(l) = self.links.get_mut(i) {
+                    } else*/
+                    if let Some(l) = self.links.get_mut(i) {
                         lc = l;
                     } else {
                         continue;
@@ -165,9 +166,9 @@ impl LinkStates {
             true => {
                 match exists {
                     true => {
-                        if let Some(l) = self.updates.remove(&id) {
-                            self.links.insert(id, l);
-                        };
+                        //if let Some(l) = self.updates.remove(&id) {
+                        //    self.links.insert(id, l);
+                        //};
                     }
                     false => {
                         self.links.insert(id, LinkContainer::new_id(id));
@@ -181,9 +182,11 @@ impl LinkStates {
                     true => match empty {
                         true => {
                             if !self.bulk {
+                                /*
                                 if let Some(res) = self.updates.remove(&id) {
                                     *old = Some(res);
                                 }
+                                */
                                 if old.is_none()
                                     && let Some(res) = self.links.remove(&id)
                                 {
@@ -200,18 +203,18 @@ impl LinkStates {
         };
     }
     pub fn get<'l>(&'l self, id: &u64) -> Option<&'l LinkContainer> {
-        match self.updates.get(id) {
+        /*match self.updates.get(id) {
             Some(l) => return Some(l),
             _ => (),
-        };
+        };*/
         return self.links.get(id);
     }
 
     pub fn get_mut<'l>(&'l mut self, id: &u64) -> Option<&'l mut LinkContainer> {
-        match self.updates.get_mut(id) {
+        /*match self.updates.get_mut(id) {
             Some(l) => return Some(l),
             _ => (),
-        };
+        };*/
         return self.links.get_mut(id);
     }
 
@@ -267,9 +270,11 @@ impl LinkStates {
         let bulk = self.bulk;
         let id = link.get_container_id();
         self.manage_nl(id, true);
-        let lc = self
-            .manage(link.get_container_id(), true, &mut None)
-            .unwrap();
+        let lc;
+        match self.manage(link.get_container_id(), true, &mut None) {
+            Some(v) => lc = v,
+            None => process::abort(),
+        };
         lc.link_add(link);
         if bulk {
             backlog.links.insert(id);
@@ -299,11 +304,12 @@ impl LinkStates {
             let src;
             let dst;
 
-            {
-                let link = self.links.get_mut(&lid).unwrap();
-                link.link_remove(id);
-
-                (src, dst) = link.get_node_ids();
+            match self.links.get_mut(&lid) {
+                Some(link) => {
+                    link.link_remove(id);
+                    (src, dst) = link.get_node_ids();
+                }
+                None => process::abort(),
             }
             self.manage_nl(*lid, false);
             let mut rm = None;
@@ -324,10 +330,11 @@ impl LinkStates {
 
     pub fn drop_link(&mut self, id: u64, idx: &mut ScreenIndex) {
         let mut link;
-        if let Some(l) = self.updates.remove(&id) {
+        /*if let Some(l) = self.updates.remove(&id) {
             link = l;
             self.links.remove(&id);
-        } else if let Some(l) = self.links.remove(&id) {
+        } else */
+        if let Some(l) = self.links.remove(&id) {
             link = l;
         } else {
             return;
@@ -336,25 +343,37 @@ impl LinkStates {
         // need to clean up all relations as well.
 
         for b in link.bundles.iter() {
-            let l = self.bundle_links.get_mut(&b.id).unwrap();
-            l.remove(&id);
-            if l.is_empty() {
-                self.bundle_links.remove(&b.id);
+            match self.bundle_links.get_mut(&b.id) {
+                Some(l) => {
+                    l.remove(&id);
+                    if l.is_empty() {
+                        self.bundle_links.remove(&b.id);
+                    }
+                }
+                _ => (),
             }
         }
         for l in link.links.iter() {
-            let ls = self.link_links.get_mut(&l.id).unwrap();
-            ls.remove(&id);
-            if ls.is_empty() {
-                self.link_links.remove(&l.id);
+            match self.link_links.get_mut(&l.id) {
+                Some(ls) => {
+                    ls.remove(&id);
+                    if ls.is_empty() {
+                        self.link_links.remove(&l.id);
+                    }
+                }
+                _ => (),
             }
         }
         let (src, dst) = link.get_node_ids();
         for node_id in [src, dst] {
-            let nl = self.node_links.get_mut(&node_id).unwrap();
-            nl.remove(&id);
-            if nl.is_empty() {
-                self.node_links.remove(&node_id);
+            match self.node_links.get_mut(&node_id) {
+                Some(nl) => {
+                    nl.remove(&id);
+                    if nl.is_empty() {
+                        self.node_links.remove(&node_id);
+                    }
+                }
+                _ => (),
             }
         }
     }
@@ -370,9 +389,11 @@ impl LinkStates {
     ) -> &'l mut LinkContainer {
         let bulk = self.bulk;
         self.manage_cross_link(true, bunlde.id, bunlde.src, bunlde.dst, false);
-        let lc = self
-            .manage(bunlde.get_container_id(), true, &mut None)
-            .unwrap();
+        let lc;
+        match self.manage(bunlde.get_container_id(), true, &mut None) {
+            Some(l) => lc = l,
+            None => process::abort(),
+        }
         lc.bundle_add(bunlde);
         if bulk {
             backlog.links.insert(lc.id);
@@ -402,11 +423,13 @@ impl LinkStates {
             let src;
             let dst;
 
-            {
-                let link = self.links.get_mut(&lid).unwrap();
-                link.bundle_remove(id);
+            match self.links.get_mut(&lid) {
+                Some(link) => {
+                    link.bundle_remove(id);
 
-                (src, dst) = link.get_node_ids();
+                    (src, dst) = link.get_node_ids();
+                }
+                None => process::abort(),
             }
             let mut rm = None;
             self.manage(*lid, false, &mut rm);
@@ -459,36 +482,37 @@ impl Link {
             label,
         }
     }
+}
 
+impl Link {
     pub fn link_id(&self) -> u64 {
         create_container_id(self.src, self.dst)
     }
 }
 
 #[wasm_bindgen(inspectable, getter_with_clone)]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct LinkContainerOpt {
-    pub id: u32,
     pub scale: f64,
     pub animation_scale: f64,
 }
 
 #[wasm_bindgen]
 impl LinkContainerOpt {
-    pub fn defaults() -> Self {
-        return Self {
-            id: 0,
-            scale: DEFAULT_LINK_SCALE,
-            animation_scale: DEFAULT_ANIMATION_WIDTH_SCALE,
-        };
-    }
     #[wasm_bindgen(constructor)]
-    pub fn new(id: u32, scale: f64, animation_scale: f64) -> Self {
+    pub fn new(scale: f64, animation_scale: f64) -> Self {
         Self {
-            id,
             scale,
             animation_scale,
         }
+    }
+}
+impl LinkContainerOpt {
+    pub fn defaults() -> Self {
+        return Self {
+            scale: DEFAULT_LINK_SCALE,
+            animation_scale: DEFAULT_ANIMATION_WIDTH_SCALE,
+        };
     }
 }
 
@@ -502,20 +526,21 @@ pub struct LinkOpt {
 
 #[wasm_bindgen]
 impl LinkOpt {
-    pub fn defaults() -> Self {
-        Self {
-            id: 0,
-            color: String::from(DEFAULT_COLOR),
-            animation_color: String::from(DEFAULT_ANIMATION_COLOR),
-        }
-    }
-
     #[wasm_bindgen(constructor)]
     pub fn new(id: u32, color: String, animation_color: String) -> Self {
         Self {
             id,
             color,
             animation_color,
+        }
+    }
+}
+impl LinkOpt {
+    pub fn defaults() -> Self {
+        Self {
+            id: 0,
+            color: String::from(DEFAULT_COLOR),
+            animation_color: String::from(DEFAULT_ANIMATION_COLOR),
         }
     }
 }
@@ -578,6 +603,8 @@ impl Bundle {
             opt,
         }
     }
+}
+impl Bundle {
     pub fn link_id(&self) -> u64 {
         create_container_id(self.src, self.dst)
     }
@@ -615,12 +642,10 @@ pub struct LinkContainer {
     pub links: Vec<Link>,
     pub bundles: Vec<Bundle>,
     pub id: u64,
-    pub opt: u32,
     pub screen_index: IndexPart,
     pub link_src: Option<LinkSource>,
 }
 
-#[derive(Clone)]
 pub struct LinkSource {
     pub src_point: Point,
     pub dst_point: Point,
@@ -630,7 +655,6 @@ pub struct LinkSource {
 
 impl CalculatorTrait for LinkContainer {}
 
-#[derive(Clone)]
 pub struct ComputedLinks {
     pub width: f64,
     pub links: Vec<ComputedLink>,
@@ -867,7 +891,7 @@ impl LinkContainer {
         }
         animations.remove(&self.id);
 
-        let lc_opt = ops.get_lc(&self.opt);
+        let lc_opt = ops.get_lc();
         if !self.is_empty() {
             // this code is temporary.. will need to upgrade it in order to support arches and elbows.
             let mut cu = self.compute_link_segement_line(&s, &d, r, src_id, &lc_opt);
@@ -929,7 +953,7 @@ impl LinkContainer {
             self.compute_line_width(link_opt.scale, r * 2.0, self.links.len());
 
         // assume wost case.
-        let mut animations = Vec::with_capacity(self.links.len());
+        let mut animations = Vec::new();
         for (i, link) in self.links.iter().enumerate() {
             let inc_by = init_step + step * (i as f64);
             let start = self.get_xy(ne.x, ne.y, inc_by, angle_south);
@@ -988,8 +1012,6 @@ impl LinkContainer {
             links.push(clink);
         }
 
-        // free any unused memory
-        animations.shrink_to_fit();
         return ComputedLinks {
             width,
             links,
@@ -1097,7 +1119,6 @@ impl LinkContainer {
             links: Vec::new(),
             bundles: Vec::new(),
             screen_index: None,
-            opt: 0,
             link_src: None,
         };
     }
@@ -1108,7 +1129,7 @@ impl LinkContainer {
 
     pub fn link_add(&mut self, link: Link) -> Option<Link> {
         if link.src == link.dst {
-            panic!("Link.src and Link.dst cannot be the same!");
+            return None;
         }
         self.clear_points();
         for (id, l) in self.links.iter().enumerate() {
@@ -1122,7 +1143,7 @@ impl LinkContainer {
 
     pub fn bundle_add(&mut self, bundle: Bundle) -> Option<Bundle> {
         if bundle.src == bundle.dst {
-            panic!("Bundle.src and Bundle.dst cannot be the same!");
+            return None;
         }
         self.clear_points();
         for (id, b) in self.bundles.iter().enumerate() {
@@ -1162,11 +1183,4 @@ impl LinkContainer {
     }
 }
 
-id_compare!(
-    Link,
-    Bundle,
-    LinkOpt,
-    BundleOpt,
-    LinkContainerOpt,
-    LinkContainer
-);
+id_compare!(Link, Bundle, LinkOpt, BundleOpt, LinkContainer);

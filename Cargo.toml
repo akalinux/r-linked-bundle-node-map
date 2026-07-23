@@ -37,5 +37,28 @@ wasm-bindgen-test = "0.3.76"
 [lib]
 crate-type = ["cdylib","rlib"]
 
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
 [profile.release]
+# Tell LLVM to optimize for size ('z' is most aggressive, 's' is balanced)
+opt-level = "z"
+#opt-level = "s"
+
+# disable overflow checks
+#overflow-checks = false
+
+# disable debug
+
+# Enable Link Time Optimization across all crates
 lto = true
+
+# Limit parallel code generation to a single unit for max optimization
+codegen-units = 1
+#codegen-units = 16
+
+# Strip all debug symbols and info automatically
+strip = true
+
+# Terminate immediately on panic to remove stack-unwinding machinery
+panic = "abort"

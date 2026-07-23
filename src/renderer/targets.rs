@@ -2,6 +2,8 @@ use crate::Point;
 use crate::ScreenBox;
 use crate::renderer::Render;
 use gloo::{events::EventListener, events::EventListenerOptions};
+use js_sys::Number;
+use std::process;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::CanvasRenderingContext2d;
@@ -41,6 +43,17 @@ impl Drop for Targets {
     }
 }
 
+fn to_fixed_px(n: f64) -> String {
+    let js_num: Number = n.into();
+    let js_str;
+    match js_num.to_fixed(2) {
+        Err(_) => process::abort(),
+        Ok(s) => js_str = s,
+    }
+    let mut str = String::from(js_str);
+    str.push_str("px");
+    str
+}
 pub struct SizeWatcher {
     _callback: Closure<dyn FnMut(Vec<ResizeObserverEntry>, ResizeObserver)>,
     watcher: ResizeObserver,
@@ -88,16 +101,6 @@ macro_rules! add_listen_callback {
     }};
 }
 
-macro_rules! get_canvas2d {
-    ($field:expr) => {
-        $field
-            .get_context("2d")
-            .unwrap()
-            .unwrap()
-            .dyn_into::<web_sys::CanvasRenderingContext2d>()
-            .unwrap()
-    };
-}
 impl Targets {
     pub fn get_render_targets(
         &self,
@@ -108,18 +111,30 @@ impl Targets {
         CanvasRenderingContext2d,
     ) {
         (
-            get_canvas2d!(self.boxnodes),
-            get_canvas2d!(self.links),
-            get_canvas2d!(self.animations),
-            get_canvas2d!(self.nodes),
+            Self::unpack_canvas(&self.boxnodes),
+            Self::unpack_canvas(&self.links),
+            Self::unpack_canvas(&self.animations),
+            Self::unpack_canvas(&self.nodes),
         )
     }
+    fn unpack_canvas(c: &HtmlCanvasElement) -> CanvasRenderingContext2d {
+        match c.get_context("2d") {
+            Ok(a) => match a {
+                Some(o) => match o.dyn_into::<web_sys::CanvasRenderingContext2d>() {
+                    Ok(canvas) => return canvas,
+                    Err(_) => process::abort(),
+                },
+                None => process::abort(),
+            },
+            Err(_) => process::abort(),
+        }
+    }
     pub fn get_animation_target(&self) -> CanvasRenderingContext2d {
-        get_canvas2d!(self.animations)
+        Self::unpack_canvas(&self.animations)
     }
 
     pub fn get_highlight_target(&self) -> CanvasRenderingContext2d {
-        get_canvas2d!(self.highlight)
+        Self::unpack_canvas(&self.highlight)
     }
 
     fn get_child_targets(&self) -> [&HtmlCanvasElement; 5] {
@@ -138,8 +153,8 @@ impl Targets {
         }
         self.screen_box = src;
         let dst = src.center(&unsafe { (*self.render).canvas_box() });
-        let top = format!("{:.2}px", dst.y);
-        let left = format!("{:.2}px", dst.x);
+        let top = to_fixed_px(dst.y);
+        let left = to_fixed_px(dst.x);
         for c in self.get_child_targets() {
             let style = c.style();
             let _ = style.set_property("top", &top);
@@ -168,8 +183,8 @@ impl Targets {
         let w = sb.width;
         let h = sb.height;
 
-        let top = format!("{:.2}px;", dst.y);
-        let left = format!("{:.2}px;", dst.x);
+        let top = to_fixed_px(dst.y);
+        let left = to_fixed_px(dst.x);
         let boxnodes = Self::create_canvas(&dom, &div, &canvas_style, w, h, &top, &left)?;
         let links = Self::create_canvas(&dom, &div, &canvas_style, w, h, &top, &left)?;
         let animations = Self::create_canvas(&dom, &div, &canvas_style, w, h, &top, &left)?;
@@ -214,8 +229,12 @@ impl Targets {
         c.set_height(h);
         let style = c.style();
         c.set_attribute("style", canvas_style)?;
-        style.set_property("width", &format!("{}px", w))?;
-        style.set_property("height", &format!("{}px", h))?;
+        let mut width = w.to_string();
+        width.push_str("px");
+        style.set_property("width", &width)?;
+        let mut height = h.to_string();
+        height.push_str("px");
+        style.set_property("height", &height)?;
         style.set_property("top", top)?;
         style.set_property("left", left)?;
         div.append_child(&c)?;
@@ -227,24 +246,31 @@ impl Targets {
         id: &String,
         style: String,
     ) -> Result<(Document, HtmlDivElement, Element), JsValue> {
-        let dom = web_sys::window()
-            .expect("no global `window` exists")
-            .document()
-            .expect("Failed to get document from window!");
-        let el = dom
-            .get_element_by_id(&id)
-            .expect(&format!("Failed to fetch element by ID: {}", &id));
+        let dom;
+        match web_sys::window() {
+            Some(w) => match w.document() {
+                Some(d) => dom = d,
+                None => return Err(JsValue::from_str("no `document` exists")),
+            },
+            None => return Err(JsValue::from_str("no global `window` exist")),
+        }
+        let root;
+        match dom.get_element_by_id(&id) {
+            Some(e) => root = e,
+            None => return Err(JsValue::from_str("Failed to fetch ID")),
+        }
 
-        let div = dom
-            .create_element("div")
-            .expect("Could not create required div element")
-            .dyn_into::<HtmlDivElement>()
-            .expect("Browser Failed to set div up correctly!");
+        let el = dom.create_element("div")?;
+        let div;
+        match el.dyn_ref::<HtmlDivElement>() {
+            Some(d) => div = d,
+            None => return Err(JsValue::from_str("Div creation failed")),
+        }
 
         div.set_attribute("style", &style)?;
 
-        el.append_child(&div)?;
-        Ok((dom, div, el))
+        root.append_child(&div)?;
+        Ok((dom, div.clone(), el))
     }
     pub fn clear_watchers(&mut self) {
         self.on_down = None;

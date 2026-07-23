@@ -216,42 +216,6 @@ fn center_tests() {
 }
 
 #[test]
-#[should_panic]
-fn add_node_as_box_fail() {
-    let a = Node {
-        x: 0.0,
-        y: 0.0,
-        h: 2.0,
-        w: 2.0,
-        id: 0,
-        label: String::from("value"),
-        opt: 0,
-        groups: Vec::from([0, 1]),
-    };
-    let mut ns = NodeStates::new(2);
-    ns.insert(a.clone(), false);
-    ns.insert_box(a.clone(), false);
-}
-
-#[test]
-#[should_panic]
-fn add_box_as_node_fail() {
-    let a = Node {
-        x: 0.0,
-        y: 0.0,
-        h: 2.0,
-        w: 2.0,
-        id: 0,
-        label: String::from("value"),
-        opt: 0,
-        groups: Vec::from([0, 1]),
-    };
-    let mut ns = NodeStates::new(2);
-    ns.insert_box(a.clone(), false);
-    ns.insert(a.clone(), false);
-}
-
-#[test]
 fn order_tests() {
     let l = String::from("value");
     let mut a = Node {

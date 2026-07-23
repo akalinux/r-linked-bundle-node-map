@@ -1,5 +1,7 @@
 pub mod img_loader;
 pub mod targets;
+use std::{mem, process};
+
 use crate::{
     ImgSrc, Move, Point, RenderBox, ScreenBox, Transform,
     bsp::PointLookupResult,
@@ -169,24 +171,36 @@ impl Render {
 
         for (node_list, link_list, box_list, _) in iter {
             for id in node_list {
-                let node = ns.get(id).unwrap();
-                let opt = co.get_node(&node.opt);
-                self.draw_node(&nodes, node, opt, false);
+                match ns.get(id) {
+                    Some(node) => {
+                        let opt = co.get_node(&node.opt);
+                        self.draw_node(&nodes, node, opt, false);
+                    }
+                    _ => (),
+                }
             }
+
             for id in box_list {
-                let node = ns.get_box(id).unwrap();
-                let opt = co.get_node(&node.opt);
-                self.draw_node(&boxes, node, opt, false);
+                match ns.get_box(id) {
+                    Some(node) => {
+                        let opt = co.get_node(&node.opt);
+                        self.draw_node(&boxes, node, opt, false);
+                    }
+                    _ => (),
+                }
             }
 
             let dashes = self.ops.animation_dashes();
             for id in link_list {
-                let lc = ls.get(&id).unwrap();
-
-                self.draw_lc(&links, lc, co, false);
-                if will_animate.contains(&lc.id) {
-                    self.draw_animation(&animations, lc, co, &dashes);
-                    self.animation_order.push(lc.id);
+                match ls.get(&id) {
+                    Some(lc) => {
+                        self.draw_lc(&links, lc, co, false);
+                        if will_animate.contains(&lc.id) {
+                            self.draw_animation(&animations, lc, co, &dashes);
+                            self.animation_order.push(lc.id);
+                        }
+                    }
+                    _ => (),
                 }
             }
         }
@@ -228,10 +242,11 @@ impl Render {
     }
 
     pub fn cache<'c>(&'c mut self) -> &'c mut ImgCache {
-        if self.cache.is_none() {
-            return self.build_cache();
+        match self.cache.as_mut() {
+            Some(c) => return unsafe { mem::transmute(c) },
+            None => (),
         }
-        return self.cache.as_mut().unwrap();
+        self.build_cache()
     }
 
     pub fn canvas_box(&self) -> ScreenBox {
@@ -380,14 +395,28 @@ impl Render {
             let v = JsValue::from(i);
             let jsp = JsValue::from(*p);
             match cb.call2(&this, &v, &jsp) {
-                Err(e) => match e.as_string() {
-                    Some(msg) => panic!("{}", msg),
-                    None => panic!("Unknown callback error!"),
-                },
+                Err(_) => process::abort(),
                 Ok(_) => {}
             }
         }
     }
+
+    fn get_node<'n>(&self, id: u32) -> &'n Node {
+        unsafe {
+            match (*self.calc).nodes().get(id) {
+                Some(node) => node,
+                None => process::abort(),
+            }
+        }
+    }
+
+    fn get_link_container<'lc>(&self, id: u64) -> &'lc LinkContainer {
+        match unsafe { (*self.calc).links().get(&id) } {
+            Some(lc) => lc,
+            None => process::abort(),
+        }
+    }
+
     pub fn render_highlight(&mut self, p: &Point) {
         let res = unsafe { (*self.calc).in_point(p, &self.t) };
         let calc = self.calc;
@@ -402,6 +431,7 @@ impl Render {
             let mut boxes = Vec::new();
             let mut bundles = Vec::new();
             let mut links = Vec::new();
+            let ops = unsafe { (*calc).options_mut() };
             match lookup {
                 PointLookupResult::Box(node) => {
                     self.draw_node(
@@ -422,19 +452,15 @@ impl Render {
                     nodes.push(node.id);
                 }
                 PointLookupResult::Link(l) => {
-                    let ops = unsafe { (*calc).options_mut() };
-                    let src;
-                    let dst;
-                    let lc = unsafe { (*calc).links().get(&l.link_id()) }.unwrap();
+                    let lc = self.get_link_container(l.link_id());
                     nodes = Vec::from([l.src, l.dst]);
                     links.push(l.id);
 
-                    unsafe {
-                        src = (*self.calc).nodes().get(l.src).unwrap();
-                        dst = (*self.calc).nodes().get(l.dst).unwrap();
-                    };
-                    // we know for sure this link exists.. so we can safly unwrap it!
-                    let details = lc.get_link_render(l.id).unwrap();
+                    let details;
+                    match lc.get_link_render(l.id) {
+                        Some(d) => details = d,
+                        None => process::abort(),
+                    }
                     let width = self.ops.highlight_scale * details.2;
                     self.draw_line(
                         &highlight,
@@ -444,21 +470,12 @@ impl Render {
                         &self.ops.highlight_color,
                     );
 
-                    for node in [src, dst] {
-                        self.draw_node(&highlight, &node, ops.get_node(&node.opt), true);
-                    }
+                    self.draw_highlight_nodes(l.src, l.dst, &highlight);
                 }
                 PointLookupResult::Bundle(b) => {
-                    let ops = unsafe { (*calc).options_mut() };
-                    let src;
-                    let dst;
-                    unsafe {
-                        src = (*self.calc).nodes().get(b.src).unwrap();
-                        dst = (*self.calc).nodes().get(b.dst).unwrap();
-                    };
                     nodes = Vec::from([b.src, b.dst]);
                     bundles.push(b.id);
-                    let lc = unsafe { (*calc).links().get(&b.link_id()) }.unwrap();
+                    let lc = self.get_link_container(b.link_id());
                     for lid in &b.links {
                         if let Some(l) = lc.get_link_render(*lid) {
                             let width = self.ops.highlight_scale * l.2;
@@ -473,16 +490,13 @@ impl Render {
                             );
                         }
                     }
-                    let rb = lc.get_bundle_box(b.id).unwrap();
-                    self.draw_box(&highlight, &rb, ops.get_bundle(&b.opt), true);
-                    for node in [src, dst] {
-                        self.draw_box(
-                            &highlight,
-                            node,
-                            unsafe { (*calc).get_node(&node.opt) },
-                            true,
-                        );
+                    let rb;
+                    match lc.get_bundle_box(b.id) {
+                        Some(bb) => rb = bb,
+                        None => process::abort(),
                     }
+                    self.draw_box(&highlight, &rb, ops.get_bundle(&b.opt), true);
+                    self.draw_highlight_nodes(b.src, b.dst, &highlight);
                 }
             }
             self.hanlde_mouse_event(
@@ -495,6 +509,13 @@ impl Render {
                 p,
             );
         }
+    }
+    fn draw_highlight_nodes(&mut self, a: u32, b: u32, ctx: &CanvasRenderingContext2d) {
+        let src = self.get_node(a);
+        let dst = self.get_node(b);
+        let calc = self.calc;
+        self.draw_box(ctx, src, unsafe { (*calc).get_node(&src.opt) }, true);
+        self.draw_box(ctx, dst, unsafe { (*calc).get_node(&dst.opt) }, true);
     }
     pub fn zoom_in(&mut self) {
         self.t.k += self.ops.wheel_move;
@@ -516,7 +537,10 @@ impl Render {
             let s = self as *mut Self;
             let cache = ImgCache::new(s);
             (*s).cache = Some(cache);
-            return (*s).cache.as_mut().unwrap();
+            match (*s).cache.as_mut() {
+                Some(c) => c,
+                None => process::abort(),
+            }
         }
     }
 

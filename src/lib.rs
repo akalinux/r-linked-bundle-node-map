@@ -11,7 +11,7 @@ pub mod link;
 pub mod node;
 pub mod renderer;
 
-#[wasm_bindgen(inspectable)]
+//#[wasm_bindgen(inspectable)]
 #[derive(PartialEq, PartialOrd, Eq, Ord, Clone, Copy, Debug)]
 pub struct ScreenBox {
     pub width: u32,
@@ -40,7 +40,7 @@ pub trait RenderBox {
     fn id(&self) -> ImgWatchId;
 }
 impl CalculatorTrait for ScreenBox {}
-#[wasm_bindgen]
+//#[wasm_bindgen]
 impl ScreenBox {
     pub fn from_step(x: i64, y: i64, step: i64) -> Self {
         Self {
