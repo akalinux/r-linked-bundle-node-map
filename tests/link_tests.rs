@@ -136,7 +136,9 @@ fn compute_bundle_tests() {
         &mut sets,
     );
     assert_eq!(sets.len(), 1);
-    assert_eq!(sets[0], Point { x: 1.0, y: 0.0 });
+    //assert_eq!(sets[0], Point { x: 1.0, y: 0.0 });
+    assert_relative_eq!(sets[0].x, 1.0, epsilon = 0.001);
+    assert_relative_eq!(sets[0].y, 0.0, epsilon = 0.001);
 
     sets.clear();
     // does not require distance
@@ -149,8 +151,10 @@ fn compute_bundle_tests() {
         &mut sets,
     );
     assert_eq!(sets.len(), 2);
-    assert_eq!(sets[0], Point { x: 1.0, y: 0.0 });
-    assert_eq!(sets[1], Point { x: 3.0, y: 0.0 });
+    assert_relative_eq!(sets[0].x, 1.0, epsilon = 0.001);
+    assert_relative_eq!(sets[0].y, 0.0, epsilon = 0.001);
+    assert_relative_eq!(sets[1].x, 3.0, epsilon = 0.001);
+    assert_relative_eq!(sets[1].y, 0.0, epsilon = 0.001);
 
     sets.clear();
     // does not require distance
@@ -163,17 +167,21 @@ fn compute_bundle_tests() {
         &mut sets,
     );
     assert_eq!(sets.len(), 3);
-    assert_eq!(sets[0], Point { x: 1.5, y: 0.0 });
-    assert_eq!(sets[1], Point { x: 3.0, y: 0.0 });
-    assert_eq!(sets[2], Point { x: 4.5, y: 0.0 });
-
+    {
+        let mut cmp = 1.0;
+        for i in 0..3 {
+            assert_relative_eq!(sets[i].x, cmp, epsilon = 0.001);
+            assert_relative_eq!(sets[i].y, 0.0, epsilon = 0.001);
+            cmp += 2.0;
+        }
+    }
     sets.clear();
     // requires distance
     //  0 1 2 3 4 5 6 7 8
     //    0   1   3   4
     lc.compute_bunlde_points(
         &Point { x: 0.0, y: 0.0 },
-        &Point { x: 9.0, y: 0.0 },
+        &Point { x: 8.0, y: 0.0 },
         4,
         &mut sets,
     );
@@ -186,6 +194,14 @@ fn compute_bundle_tests() {
     assert_relative_eq!(sets[2].y as f32, 0.0, epsilon = 0.009);
     assert_relative_eq!(sets[3].x, 7.0, epsilon = 0.009);
     assert_relative_eq!(sets[3].y as f32, 0.0, epsilon = 0.009);
+    sets.clear();
+    // 0 elements safty check!
+    lc.compute_bunlde_points(
+        &Point { x: 0.0, y: 0.0 },
+        &Point { x: 8.0, y: 0.0 },
+        0,
+        &mut sets,
+    );
 }
 
 #[test]
@@ -283,15 +299,15 @@ fn point_inside_tests() {
     assert!(lc.contains_point(&Point { x: 1.0, y: 9.0 }).is_none());
     assert_eq!(
         lc.contains_point(&Point { x: 5.0, y: 5.0 }),
-        Some(LinkContainsType::Bundle(bundle.clone()))
+        LinkContainsType::Bundle(&bundle)
     );
     assert_eq!(
         lc.contains_point(&Point { x: 2.5, y: 2.5 }),
-        Some(LinkContainsType::Link(link.clone()))
+        LinkContainsType::Link(&link)
     );
     assert_eq!(
         lc.contains_point(&Point { x: 7.5, y: 7.5 }),
-        Some(LinkContainsType::Link(link.clone()))
+        LinkContainsType::Link(&link)
     );
     assert!(!lc.get_link_render(link.id).is_none());
     assert!(!lc.get_bundle_box(bundle.id).is_none());

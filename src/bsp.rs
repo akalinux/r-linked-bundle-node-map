@@ -295,8 +295,8 @@ impl<'s> OnScreen<'s> {
     fn no_screen(idx: &'s ScreenIndex) -> Self {
         Self {
             idx,
-            x: 0..=0,
-            y: 0..=0,
+            x: 0..=-1,
+            y: 0..=-1,
             cy: 0,
             cx: 0,
             next: None,
@@ -314,11 +314,21 @@ pub enum ScreenSlot {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum PointLookupResult {
-    Node(Node),
-    Box(Node),
-    Link(Link),
-    Bundle(Bundle),
+pub enum PointLookupResult<'r> {
+    Node(&'r Node),
+    Box(&'r Node),
+    Link(&'r Link),
+    Bundle(&'r Bundle),
+    NoMatch,
+}
+
+impl<'r> PointLookupResult<'r> {
+    pub fn is_none(&self) -> bool {
+        match self {
+            PointLookupResult::NoMatch => true,
+            _ => false,
+        }
+    }
 }
 impl ScreenIndex {
     pub fn new(step: i64) -> Self {
@@ -328,13 +338,13 @@ impl ScreenIndex {
         };
     }
 
-    pub fn in_point(
-        &self,
+    pub fn in_point<'r>(
+        &'r self,
         p: &Point,
         t: &Transform,
         n: &NodeStates,
         l: &LinkStates,
-    ) -> Option<PointLookupResult> {
+    ) -> PointLookupResult<'r> {
         let tp = p.to_map_xy(p, t);
         let ip = tp.to_index_point(self.step);
         if let Some(y) = self.x.get(&ip.0)
@@ -342,54 +352,36 @@ impl ScreenIndex {
         {
             for node_id in r.nodes.iter() {
                 if let Some(node) = n.node_in_point(*node_id, &tp) {
-                    return Some(PointLookupResult::Node(node));
+                    return PointLookupResult::Node(unsafe { mem::transmute(node) });
                 }
             }
             for link_id in r.links.iter() {
-                if let Some(r) = l.link_contains_point(*link_id, p) {
-                    match r {
-                        LinkContainsType::Bundle(b) => return Some(PointLookupResult::Bundle(b)),
-                        LinkContainsType::Link(l) => return Some(PointLookupResult::Link(l)),
+                match l.link_contains_point(*link_id, p) {
+                    LinkContainsType::Bundle(b) => {
+                        return PointLookupResult::Bundle(unsafe { mem::transmute(b) });
                     }
+                    LinkContainsType::Link(l) => {
+                        return PointLookupResult::Link(unsafe { mem::transmute(l) });
+                    }
+                    LinkContainsType::NoMatch => (),
                 }
             }
             for node_id in r.boxes.iter() {
                 if let Some(node) = n.box_in_point(*node_id, &tp) {
-                    return Some(PointLookupResult::Box(node));
+                    return PointLookupResult::Box(unsafe { mem::transmute(node) });
                 }
             }
         }
 
-        None
+        PointLookupResult::NoMatch
     }
     pub fn max_screen(&self) -> Option<ScreenBox> {
-        let idx_x = &self.x;
-        if idx_x.is_empty() {
-            return None;
-        }
-        let (start_x, mut y_t);
-        match idx_x.first_key_value() {
-            Some(a) => (start_x, y_t) = a,
-            None => return None,
-        }
-        let start_y;
-        match y_t.first_key_value() {
-            Some((y, _)) => start_y = y,
-            None => return None,
-        };
+        let (start_x, mut y_t) = self.x.first_key_value()?;
+        let (start_y, _) = y_t.first_key_value()?;
         let end_x;
-        match idx_x.last_key_value() {
-            Some((a, b)) => {
-                end_x = a;
-                y_t = b
-            }
-            None => return None,
-        }
+        (end_x, y_t) = self.x.last_key_value()?;
         let end_y;
-        match y_t.last_key_value() {
-            Some((a, _)) => end_y = a,
-            None => return None,
-        }
+        (end_y, _) = y_t.last_key_value()?;
         let end_x = *end_x + self.step;
         let end_y = *end_y + self.step;
         let width = (end_x - start_x) as u32;

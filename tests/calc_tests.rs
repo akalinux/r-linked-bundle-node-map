@@ -5,7 +5,7 @@ use linked_bundle_node_map::{
     bsp::PointLookupResult,
     calc::{BulkLoad, Calculator, Options},
     constants::{ZERO_POINT, ZERO_TRANSFORM},
-    link::{Animation, Bundle, Link, SrcDstIs},
+    link::{Animation, Bundle, Link},
     node::{LabelPosition, Node, NodeOpt},
 };
 use wasm_bindgen_test::*;
@@ -52,7 +52,6 @@ fn common_data() -> (Node, Node, Link, Bundle) {
     let bundle = Bundle::new(0, 0, 1, 0, vec![0], String::from("test bundle!"));
     (src, dst, link, bundle)
 }
-#[wasm_bindgen_test]
 #[test]
 fn bulk_load_tests() {
     let (src, dst, link, bundle) = common_data();
@@ -70,25 +69,25 @@ fn bulk_load_tests() {
     calc.bulk_load(bulk);
     assert_eq!(
         calc.in_point(&Point { x: 1.0, y: 1.0 }, &t),
-        Some(PointLookupResult::Node(src.clone()))
+        PointLookupResult::Node(&src)
     );
     assert_eq!(
         calc.in_point(&Point { x: 9.0, y: 9.0 }, &t),
-        Some(PointLookupResult::Node(dst.clone()))
+        PointLookupResult::Node(&dst)
     );
 
     assert!(calc.in_point(&Point { x: 1.0, y: 9.0 }, &t).is_none());
     assert_eq!(
         calc.in_point(&Point { x: 5.0, y: 5.0 }, &t),
-        Some(PointLookupResult::Bundle(bundle.clone()))
+        PointLookupResult::Bundle(&bundle)
     );
     assert_eq!(
         calc.in_point(&Point { x: 2.5, y: 2.5 }, &t),
-        Some(PointLookupResult::Link(link.clone()))
+        PointLookupResult::Link(&link)
     );
     assert_eq!(
         calc.in_point(&Point { x: 7.5, y: 7.5 }, &t),
-        Some(PointLookupResult::Link(link.clone()))
+        PointLookupResult::Link(&link)
     );
 
     {
@@ -97,7 +96,7 @@ fn bulk_load_tests() {
             iter.next(),
             Some((
                 vec![0, 1],
-                vec![link.clone().get_container_id(),],
+                vec![link.clone().link_id(),],
                 vec![],
                 ScreenBox {
                     width: 768,
@@ -142,7 +141,7 @@ fn bulk_load_tests() {
 fn wanted_srceen_tests() {
     let mut calc = Calculator::new();
     let ds = calc.default_screen_block();
-    assert!(calc.current_screen().is_none());
+    assert!(calc.indexer().max_screen().is_none());
     assert_eq!(
         calc.wanted_screens(32, 32, &ZERO_TRANSFORM),
         vec![ds.clone()]
@@ -266,83 +265,79 @@ fn move_nodes_test() {
     let t = &ZERO_TRANSFORM;
     assert_eq!(
         calc.in_point(&ZERO_POINT, t),
-        Some(PointLookupResult::Node(node_a.clone()))
+        PointLookupResult::Node(&node_a)
     );
     assert_eq!(
         calc.in_point(&Point { x: 10.0, y: 10.0 }, t),
-        Some(PointLookupResult::Node(node_b.clone()))
+        PointLookupResult::Node(&node_b)
     );
     assert_eq!(
         calc.in_point(&Point { x: 5.0, y: 5.0 }, t),
-        Some(PointLookupResult::Link(link_a.clone()))
+        PointLookupResult::Link(&link_a)
     );
     assert_eq!(
         calc.in_point(&Point { x: 10.0, y: 0.0 }, t),
-        Some(PointLookupResult::Box(node_box.clone()))
+        PointLookupResult::Box(&node_box)
     );
     // simulate box move
     calc.move_nodes(&[2], &Point { x: 10.0, y: 10.0 }, true);
     assert_eq!(
         calc.in_point(&Point { x: 10.0, y: 10.0 }, t),
-        Some(PointLookupResult::Node(
-            node_a.transform(10.0, 10.0, 0.0, 0.0)
-        ))
+        PointLookupResult::Node(&node_a.transform(10.0, 10.0, 0.0, 0.0))
     );
     assert_eq!(
         calc.in_point(&Point { x: 20.0, y: 20.0 }, t),
-        Some(PointLookupResult::Node(
-            node_b.transform(10.0, 10.0, 0.0, 0.0)
-        ))
+        PointLookupResult::Node(&node_b.transform(10.0, 10.0, 0.0, 0.0))
     );
     assert_eq!(
         calc.in_point(&Point { x: 20.0, y: 10.0 }, t),
-        Some(PointLookupResult::Box(
-            node_box.transform(10.0, 10.0, 0.0, 0.0)
-        ))
+        PointLookupResult::Box(&node_box.transform(10.0, 10.0, 0.0, 0.0))
     );
     assert_eq!(
         calc.in_point(&Point { x: 15.0, y: 15.0 }, t),
-        Some(PointLookupResult::Link(link_a.clone()))
+        PointLookupResult::Link(&link_a)
     );
     calc.move_nodes(&[2], &Point { x: -10.0, y: -10.0 }, true);
     assert_eq!(
         calc.in_point(&ZERO_POINT, t),
-        Some(PointLookupResult::Node(node_a.clone()))
+        PointLookupResult::Node(&node_a)
     );
     assert_eq!(
         calc.in_point(&Point { x: 10.0, y: 10.0 }, t),
-        Some(PointLookupResult::Node(node_b.clone()))
+        PointLookupResult::Node(&node_b)
     );
     assert_eq!(
         calc.in_point(&Point { x: 5.0, y: 5.0 }, t),
-        Some(PointLookupResult::Link(link_a.clone()))
+        PointLookupResult::Link(&link_a)
     );
     assert_eq!(
         calc.in_point(&Point { x: 10.0, y: 0.0 }, t),
-        Some(PointLookupResult::Box(node_box.clone()))
+        PointLookupResult::Box(&node_box)
     );
     // simulate link move
     calc.move_nodes(&[0, 1], &Point { x: 10.0, y: 10.0 }, false);
     // should not have moved our box!
-    assert_eq!(calc.in_point(&Point { x: 20.0, y: 10.0 }, t), None);
+    assert_eq!(
+        calc.in_point(&Point { x: 20.0, y: 10.0 }, t),
+        PointLookupResult::NoMatch
+    );
 
     assert_eq!(
         calc.in_point(&Point { x: 10.0, y: 10.0 }, t),
-        Some(PointLookupResult::Node(
-            node_a.transform(10.0, 10.0, 0.0, 0.0)
-        ))
+        PointLookupResult::Node(&node_a.transform(10.0, 10.0, 0.0, 0.0))
     );
     assert_eq!(
         calc.in_point(&Point { x: 20.0, y: 20.0 }, t),
-        Some(PointLookupResult::Node(
-            node_b.transform(10.0, 10.0, 0.0, 0.0)
-        ))
+        PointLookupResult::Node(&node_b.transform(10.0, 10.0, 0.0, 0.0))
     );
 
     assert_eq!(
         calc.in_point(&Point { x: 15.0, y: 15.0 }, t),
-        Some(PointLookupResult::Link(link_a.clone()))
+        PointLookupResult::Link(&link_a)
     );
     calc.link_remove(0);
-    assert_eq!(calc.in_point(&Point { x: 15.0, y: 15.0 }, t), None);
+    assert_eq!(
+        calc.in_point(&Point { x: 15.0, y: 15.0 }, t),
+        PointLookupResult::NoMatch
+    );
 }

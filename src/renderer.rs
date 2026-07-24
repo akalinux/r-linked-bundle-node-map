@@ -21,7 +21,7 @@ use crate::{
 use gloo::timers::callback::Timeout;
 use js_sys::Array;
 use js_sys::Function;
-use pastey::paste;
+//use pastey::paste;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use web_sys::CanvasRenderingContext2d;
 pub enum CurrentTarget {
@@ -91,6 +91,7 @@ impl RenderOpt {
         return res;
     }
 }
+/*
 macro_rules! render_opt {
     ($field:ident,$ty:ty) => {
         paste! {
@@ -101,9 +102,9 @@ macro_rules! render_opt {
                     self.$field=v;
                 }
 
-                pub fn [<get_ $field>](&mut self) ->$ty{
-                    self.$field.clone()
-                }
+                //pub fn [<get_ $field>](&mut self) ->$ty{
+                //    self.$field.clone()
+                //}
             }
         }
     };
@@ -118,6 +119,7 @@ render_opt!(timeout, u32);
 render_opt!(animation_dashes, Vec<f64>);
 render_opt!(bulk_img_update, bool);
 render_opt!(callback, Option<Function>);
+*/
 
 #[wasm_bindgen]
 impl Render {
@@ -261,32 +263,25 @@ impl Render {
 
     fn point_state(&self, p: &Point) -> CurrentTarget {
         let mut m = Move::new(p, self.t);
-        let res;
         let calc = self.calc;
-        unsafe {
-            res = (*calc).in_point(p, &self.t);
-        }
-
-        match res {
-            None => CurrentTarget::Screen(m),
-            Some(f) => match f {
-                PointLookupResult::Bundle(b) => {
-                    m.center(&unsafe { (*calc).get_src_dst_center(b.src, b.dst) });
-                    CurrentTarget::Bundle((m, b))
-                }
-                PointLookupResult::Link(l) => {
-                    m.center(&unsafe { (*calc).get_src_dst_center(l.src, l.dst) });
-                    CurrentTarget::Link((m, l))
-                }
-                PointLookupResult::Node(n) => {
-                    m.center(&n.get_center());
-                    CurrentTarget::Node((m, n))
-                }
-                PointLookupResult::Box(n) => {
-                    m.center(&n.get_center());
-                    CurrentTarget::Node((m, n))
-                }
-            },
+        match unsafe { (*calc).in_point(p, &self.t) } {
+            PointLookupResult::NoMatch => CurrentTarget::Screen(m),
+            PointLookupResult::Bundle(b) => {
+                m.center(&unsafe { (*calc).get_src_dst_center(b.src, b.dst) });
+                CurrentTarget::Bundle((m, b.clone()))
+            }
+            PointLookupResult::Link(l) => {
+                m.center(&unsafe { (*calc).get_src_dst_center(l.src, l.dst) });
+                CurrentTarget::Link((m, l.clone()))
+            }
+            PointLookupResult::Node(n) => {
+                m.center(&n.get_center());
+                CurrentTarget::Node((m, n.clone()))
+            }
+            PointLookupResult::Box(n) => {
+                m.center(&n.get_center());
+                CurrentTarget::Node((m, n.clone()))
+            }
         }
     }
 
@@ -418,7 +413,7 @@ impl Render {
     }
 
     pub fn render_highlight(&mut self, p: &Point) {
-        let res = unsafe { (*self.calc).in_point(p, &self.t) };
+        let lookup = unsafe { (*self.calc).in_point(p, &self.t) };
         let calc = self.calc;
         let highlight;
         if let Some(t) = &self.targets {
@@ -426,89 +421,82 @@ impl Render {
         } else {
             return;
         }
-        if let Some(lookup) = res {
-            let mut nodes = Vec::new();
-            let mut boxes = Vec::new();
-            let mut bundles = Vec::new();
-            let mut links = Vec::new();
-            let ops = unsafe { (*calc).options_mut() };
-            match lookup {
-                PointLookupResult::Box(node) => {
-                    self.draw_node(
-                        &highlight,
-                        &node,
-                        unsafe { (*calc).get_node(&node.opt) },
-                        true,
-                    );
-                    boxes.push(node.id);
-                }
-                PointLookupResult::Node(node) => {
-                    self.draw_node(
-                        &highlight,
-                        &node,
-                        unsafe { (*calc).get_node(&node.opt) },
-                        true,
-                    );
-                    nodes.push(node.id);
-                }
-                PointLookupResult::Link(l) => {
-                    let lc = self.get_link_container(l.link_id());
-                    nodes = Vec::from([l.src, l.dst]);
-                    links.push(l.id);
-
-                    let details;
-                    match lc.get_link_render(l.id) {
-                        Some(d) => details = d,
-                        None => process::abort(),
-                    }
-                    let width = self.ops.highlight_scale * details.2;
-                    self.draw_line(
-                        &highlight,
-                        &details.0,
-                        &details.1,
-                        width,
-                        &self.ops.highlight_color,
-                    );
-
-                    self.draw_highlight_nodes(l.src, l.dst, &highlight);
-                }
-                PointLookupResult::Bundle(b) => {
-                    nodes = Vec::from([b.src, b.dst]);
-                    bundles.push(b.id);
-                    let lc = self.get_link_container(b.link_id());
-                    for lid in &b.links {
-                        if let Some(l) = lc.get_link_render(*lid) {
-                            let width = self.ops.highlight_scale * l.2;
-                            links.push(*lid);
-
-                            self.draw_line(
-                                &highlight,
-                                &l.0,
-                                &l.1,
-                                width,
-                                &self.ops.highlight_color,
-                            );
-                        }
-                    }
-                    let rb;
-                    match lc.get_bundle_box(b.id) {
-                        Some(bb) => rb = bb,
-                        None => process::abort(),
-                    }
-                    self.draw_box(&highlight, &rb, ops.get_bundle(&b.opt), true);
-                    self.draw_highlight_nodes(b.src, b.dst, &highlight);
-                }
+        let mut nodes = Vec::new();
+        let mut boxes = Vec::new();
+        let mut bundles = Vec::new();
+        let mut links = Vec::new();
+        let ops = unsafe { (*calc).options_mut() };
+        match lookup {
+            PointLookupResult::NoMatch => return,
+            PointLookupResult::Box(node) => {
+                self.draw_node(
+                    &highlight,
+                    &node,
+                    unsafe { (*calc).get_node(&node.opt) },
+                    true,
+                );
+                boxes.push(node.id);
             }
-            self.hanlde_mouse_event(
-                MouseEvent::MouseOver(MouseImpacted {
-                    nodes,
-                    links,
-                    boxes,
-                    bundles,
-                }),
-                p,
-            );
+            PointLookupResult::Node(node) => {
+                self.draw_node(
+                    &highlight,
+                    &node,
+                    unsafe { (*calc).get_node(&node.opt) },
+                    true,
+                );
+                nodes.push(node.id);
+            }
+            PointLookupResult::Link(l) => {
+                let lc = self.get_link_container(l.link_id());
+                nodes = Vec::from([l.src, l.dst]);
+                links.push(l.id);
+
+                let details;
+                match lc.get_link_render(l.id) {
+                    Some(d) => details = d,
+                    None => process::abort(),
+                }
+                let width = self.ops.highlight_scale * details.2;
+                self.draw_line(
+                    &highlight,
+                    &details.0,
+                    &details.1,
+                    width,
+                    &self.ops.highlight_color,
+                );
+
+                self.draw_highlight_nodes(l.src, l.dst, &highlight);
+            }
+            PointLookupResult::Bundle(b) => {
+                nodes = Vec::from([b.src, b.dst]);
+                bundles.push(b.id);
+                let lc = self.get_link_container(b.link_id());
+                for lid in &b.links {
+                    if let Some(l) = lc.get_link_render(*lid) {
+                        let width = self.ops.highlight_scale * l.2;
+                        links.push(*lid);
+
+                        self.draw_line(&highlight, &l.0, &l.1, width, &self.ops.highlight_color);
+                    }
+                }
+                let rb;
+                match lc.get_bundle_box(b.id) {
+                    Some(bb) => rb = bb,
+                    None => process::abort(),
+                }
+                self.draw_box(&highlight, &rb, ops.get_bundle(&b.opt), true);
+                self.draw_highlight_nodes(b.src, b.dst, &highlight);
+            }
         }
+        self.hanlde_mouse_event(
+            MouseEvent::MouseOver(MouseImpacted {
+                nodes,
+                links,
+                boxes,
+                bundles,
+            }),
+            p,
+        );
     }
     fn draw_highlight_nodes(&mut self, a: u32, b: u32, ctx: &CanvasRenderingContext2d) {
         let src = self.get_node(a);
@@ -517,14 +505,14 @@ impl Render {
         self.draw_box(ctx, src, unsafe { (*calc).get_node(&src.opt) }, true);
         self.draw_box(ctx, dst, unsafe { (*calc).get_node(&dst.opt) }, true);
     }
-    pub fn zoom_in(&mut self) {
-        self.t.k += self.ops.wheel_move;
-        self.rndr();
-    }
-    pub fn zoom_out(&mut self) {
-        self.t.k -= self.ops.wheel_move;
-        if self.t.k <= 0.0 {
-            self.t.k = self.ops.wheel_move
+    pub fn zoom(&mut self, delta: f64) {
+        if delta < 0.0 {
+            self.t.k += self.ops.wheel_move;
+        } else {
+            self.t.k -= self.ops.wheel_move;
+            if self.t.k <= 0.0 {
+                self.t.k = self.ops.wheel_move
+            }
         }
         self.rndr();
     }

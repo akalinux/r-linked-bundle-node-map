@@ -1,6 +1,6 @@
 #![cfg(test)]
 use linked_bundle_node_map::{
-    CalculatorTrait, ContainsPoint, FullBox, Point, PointBox,
+    CalculatorTrait, ContainsPoint, Point, PointBox,
     constants::ZERO_POINT,
     node::{Node, NodeStates},
 };
@@ -58,24 +58,24 @@ fn node_box() {
     assert_eq!(y, 0..=1);
 
     // dead center
-    assert!(node.inside_box(&node, &Point { x: 0.5, y: 0.5 }));
+    assert!(node.inside_box(&node.full_box(), &Point { x: 0.5, y: 0.5 }));
 
     // left
-    assert!(!node.inside_box(&node, &Point { x: -0.5, y: 0.5 }));
+    assert!(!node.inside_box(&node.full_box(), &Point { x: -0.5, y: 0.5 }));
     // right
-    assert!(!node.inside_box(&node, &Point { x: 1.5, y: 0.5 }));
+    assert!(!node.inside_box(&node.full_box(), &Point { x: 1.5, y: 0.5 }));
     // above
-    assert!(!node.inside_box(&node, &Point { x: 0.5, y: -0.5 }));
+    assert!(!node.inside_box(&node.full_box(), &Point { x: 0.5, y: -0.5 }));
     // below
-    assert!(!node.inside_box(&node, &Point { x: 0.5, y: 1.5 }));
+    assert!(!node.inside_box(&node.full_box(), &Point { x: 0.5, y: 1.5 }));
     // top left
-    assert!(node.inside_box(&node, &Point { x: 0.0, y: 0.0 }));
+    assert!(node.inside_box(&node.full_box(), &Point { x: 0.0, y: 0.0 }));
     // top right
-    assert!(node.inside_box(&node, &Point { x: 1.0, y: 0.0 }));
+    assert!(node.inside_box(&node.full_box(), &Point { x: 1.0, y: 0.0 }));
     // bottom left
-    assert!(node.inside_box(&node, &Point { x: 0.0, y: 1.0 }));
+    assert!(node.inside_box(&node.full_box(), &Point { x: 0.0, y: 1.0 }));
     // bottom right
-    assert!(node.inside_box(&node, &Point { x: 1.0, y: 1.0 }));
+    assert!(node.inside_box(&node.full_box(), &Point { x: 1.0, y: 1.0 }));
 
     node = node.transform(0.5, 0.5, 1.0, 1.0);
     (nw, ne, sw, se) = node.full_box();

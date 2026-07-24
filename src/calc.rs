@@ -219,7 +219,7 @@ pub enum MouseEvent {
 impl CalculatorTrait for Calculator {}
 
 impl Calculator {
-    pub fn in_point(&self, p: &Point, t: &Transform) -> Option<PointLookupResult> {
+    pub fn in_point<'r>(&'r self, p: &Point, t: &Transform) -> PointLookupResult<'r> {
         self.indexer.in_point(p, t, &self.nodes, &self.links)
     }
     pub fn move_nodes(&mut self, node_ids: &[u32], p: &Point, use_groups: bool) -> MouseImpacted {
@@ -293,7 +293,7 @@ impl Calculator {
         ScreenBox::new(&ZERO_TRANSFORM, step as u32, step as u32, step)
     }
 
-    pub unsafe fn get_src_dst_center(&self, src: u32, dst: u32) -> Point {
+    pub fn get_src_dst_center(&self, src: u32, dst: u32) -> Point {
         let (a, b);
         match self.nodes.get(src) {
             Some(x) => a = x,
@@ -336,9 +336,6 @@ impl Calculator {
             _ => (),
         };
         node
-    }
-    pub fn current_screen(&self) -> Option<ScreenBox> {
-        self.indexer.max_screen()
     }
 
     pub fn wanted_screens(&self, width: u32, height: u32, t: &Transform) -> Vec<ScreenBox> {

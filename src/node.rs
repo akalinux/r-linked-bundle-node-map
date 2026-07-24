@@ -131,11 +131,7 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
         if todo.is_empty() {
             return None;
         }
-        let next;
-        match todo.pop() {
-            Some(v) => next = v,
-            None => process::abort(),
-        }
+        let next = todo.pop()?;
         let known_nodes = &mut self.known_nodes;
         let known_groups = &mut self.known_groups;
         let nodes = &self.nodes;
@@ -145,22 +141,18 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
             if let Some(n) = nodes.get_box(next) {
                 res = n;
                 ss = ScreenSlot::Box(n.id)
-            } else if let Some(n) = nodes.get(next) {
-                res = n;
-                ss = ScreenSlot::Node(n.id)
             } else {
-                // in this case.. something went wroing.. so we just give up here!
-                return None;
+                res = nodes.get(next)?;
+                ss = ScreenSlot::Node(res.id)
             }
             return Some((unsafe { mem::transmute(res) }, ss));
         }
         let groups;
         if let Some(n) = self.nodes.get_box(next) {
             groups = &n.groups
-        } else if let Some(n) = self.nodes.get(next) {
-            groups = &n.groups
         } else {
-            return None;
+            let n = self.nodes.get(next)?;
+            groups = &n.groups
         }
 
         todo.reserve(groups.len());
@@ -193,11 +185,9 @@ impl<'n> Iterator for GetRelatedNodes<'n> {
         if let Some(n) = nodes.get_box(next) {
             node = n;
             ss = ScreenSlot::Box(node.id);
-        } else if let Some(n) = nodes.get(next) {
-            node = n;
-            ss = ScreenSlot::Node(n.id);
         } else {
-            return None;
+            node = nodes.get(next)?;
+            ss = ScreenSlot::Node(node.id);
         }
         return Some((unsafe { mem::transmute(node) }, ss));
     }
@@ -250,24 +240,21 @@ impl NodeOpt {
     }
 }
 
-impl FullBox for Node {
-    fn full_box(&self) -> (Point, Point, Point, Point) {
+impl Node {
+    pub fn get_center(&self) -> Point {
+        Point::new(self.x, self.y)
+    }
+    pub fn full_box(&self) -> FullBox {
         let min_x = self.get_min_x();
         let max_x = self.get_max_x();
         let min_y = self.get_min_y();
         let max_y = self.get_max_y();
-        return (
+        (
             Point { x: min_x, y: min_y }, // nw
             Point { x: max_x, y: min_y }, // ne
             Point { x: min_x, y: max_y }, // sw
             Point { x: max_x, y: max_y }, // se
-        );
-    }
-}
-
-impl Node {
-    pub fn get_center(&self) -> Point {
-        Point::new(self.x, self.y)
+        )
     }
 }
 
@@ -390,11 +377,11 @@ pub struct NodeStates {
 }
 
 impl NodeStates {
-    pub fn node_in_point(&self, id: u32, p: &Point) -> Option<Node> {
+    pub fn node_in_point<'r>(&'r self, id: u32, p: &Point) -> Option<&'r Node> {
         match self.get(id) {
             Some(n) => {
                 if n.in_point(p) {
-                    return Some(n.clone());
+                    return Some(n);
                 }
             }
             _ => (),
@@ -402,11 +389,11 @@ impl NodeStates {
         None
     }
 
-    pub fn box_in_point(&self, id: u32, p: &Point) -> Option<Node> {
+    pub fn box_in_point<'r>(&'r self, id: u32, p: &Point) -> Option<&'r Node> {
         match self.get_box(id) {
             Some(n) => {
                 if n.in_point(p) {
-                    return Some(n.clone());
+                    return Some(n);
                 }
             }
             _ => (),
@@ -571,18 +558,14 @@ impl NodeStates {
     pub fn get(&self, id: u32) -> Option<&Node> {
         if let Some(node) = self.node_updates.get(&id) {
             return Some(node);
-        } else if let Some(node) = self.nodes.get(&id) {
-            return Some(node);
         }
-        return None;
+        self.nodes.get(&id)
     }
     pub fn get_box(&self, id: u32) -> Option<&Node> {
         if let Some(node) = self.box_updates.get(&id) {
             return Some(node);
-        } else if let Some(node) = self.boxes.get(&id) {
-            return Some(node);
         }
-        return None;
+        self.boxes.get(&id)
     }
 }
 

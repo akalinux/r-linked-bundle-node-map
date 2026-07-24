@@ -16,7 +16,6 @@ use crate::{
     id_compare,
     node::{Node, NodeStates},
 };
-
 pub struct LinkStates {
     pub bulk: bool,
     pub links: HashMap<u64, LinkContainer>,
@@ -27,11 +26,11 @@ pub struct LinkStates {
 }
 
 impl LinkStates {
-    pub fn link_contains_point(&self, id: u64, p: &Point) -> Option<LinkContainsType> {
+    pub fn link_contains_point<'r>(&'r self, id: u64, p: &Point) -> LinkContainsType<'r> {
         if let Some(l) = self.get(&id) {
             return l.contains_point(p);
         }
-        None
+        LinkContainsType::NoMatch
     }
     pub fn new() -> Self {
         Self {
@@ -97,27 +96,21 @@ impl LinkStates {
         animations: &mut HashSet<u64>,
         backlog: &mut BacklogUpdates,
     ) {
-        match self.node_links.get(&node_id) {
-            Some(nl) => {
-                for i in nl.iter() {
-                    let lc;
-                    /*if let Some(l) = self.updates.get_mut(i) {
-                        lc = l;
-                    } else*/
-                    if let Some(l) = self.links.get_mut(i) {
-                        lc = l;
-                    } else {
-                        continue;
-                    }
-                    if self.bulk {
-                        backlog.links.insert(*i);
-                    } else {
-                        lc.update(nodes, ops, animations);
-                        idx.index(ScreenSlot::Link(*i), lc.screen_index(idx.step, true));
-                    }
+        if let Some(nl) = self.node_links.get(&node_id) {
+            for i in nl.iter() {
+                match self.links.get_mut(i) {
+                    Some(lc) => match self.bulk {
+                        true => {
+                            backlog.links.insert(*i);
+                        }
+                        false => {
+                            lc.update(nodes, ops, animations);
+                            idx.index(ScreenSlot::Link(*i), lc.screen_index(idx.step, true));
+                        }
+                    },
+                    _ => (),
                 }
             }
-            _ => return,
         }
     }
 
@@ -125,23 +118,19 @@ impl LinkStates {
         let (src, dst) = unsafe { mem::transmute::<u64, (u32, u32)>(id) };
         for n in [src, dst] {
             let mut empty = true;
-            match self.node_links.get_mut(&n) {
-                Some(nl) => {
-                    if add {
-                        empty = false;
-                        nl.insert(id);
-                    } else {
-                        nl.remove(&id);
-                        empty = nl.is_empty()
-                    }
+            if let Some(nl) = self.node_links.get_mut(&n) {
+                if add {
+                    empty = false;
+                    nl.insert(id);
+                } else {
+                    nl.remove(&id);
+                    empty = nl.is_empty()
                 }
-                _ => (),
-            };
-            if !add && empty {
-                self.node_links.remove(&n);
-            } else {
-                self.node_links.insert(n, HashSet::from([id]));
             }
+            match !add && empty {
+                true => self.node_links.remove(&n),
+                false => self.node_links.insert(n, HashSet::from([id])),
+            };
         }
     }
     fn manage<'l>(
@@ -165,11 +154,7 @@ impl LinkStates {
         match add {
             true => {
                 match exists {
-                    true => {
-                        //if let Some(l) = self.updates.remove(&id) {
-                        //    self.links.insert(id, l);
-                        //};
-                    }
+                    true => (),
                     false => {
                         self.links.insert(id, LinkContainer::new_id(id));
                     }
@@ -182,11 +167,6 @@ impl LinkStates {
                     true => match empty {
                         true => {
                             if !self.bulk {
-                                /*
-                                if let Some(res) = self.updates.remove(&id) {
-                                    *old = Some(res);
-                                }
-                                */
                                 if old.is_none()
                                     && let Some(res) = self.links.remove(&id)
                                 {
@@ -203,23 +183,15 @@ impl LinkStates {
         };
     }
     pub fn get<'l>(&'l self, id: &u64) -> Option<&'l LinkContainer> {
-        /*match self.updates.get(id) {
-            Some(l) => return Some(l),
-            _ => (),
-        };*/
-        return self.links.get(id);
+        self.links.get(id)
     }
 
     pub fn get_mut<'l>(&'l mut self, id: &u64) -> Option<&'l mut LinkContainer> {
-        /*match self.updates.get_mut(id) {
-            Some(l) => return Some(l),
-            _ => (),
-        };*/
-        return self.links.get_mut(id);
+        self.links.get_mut(id)
     }
 
     pub fn get_mut_for_change<'l>(&'l mut self, id: &u64) -> Option<&'l mut LinkContainer> {
-        return self.manage(*id, true, &mut None);
+        self.manage(*id, true, &mut None)
     }
 
     pub fn manage_cross_link(&mut self, add: bool, id: u32, src: u32, dst: u32, link: bool) {
@@ -268,10 +240,10 @@ impl LinkStates {
     ) -> &'l mut LinkContainer {
         self.manage_cross_link(true, link.id, link.src, link.dst, true);
         let bulk = self.bulk;
-        let id = link.get_container_id();
+        let id = link.link_id();
         self.manage_nl(id, true);
         let lc;
-        match self.manage(link.get_container_id(), true, &mut None) {
+        match self.manage(link.link_id(), true, &mut None) {
             Some(v) => lc = v,
             None => process::abort(),
         };
@@ -390,7 +362,7 @@ impl LinkStates {
         let bulk = self.bulk;
         self.manage_cross_link(true, bunlde.id, bunlde.src, bunlde.dst, false);
         let lc;
-        match self.manage(bunlde.get_container_id(), true, &mut None) {
+        match self.manage(bunlde.link_id(), true, &mut None) {
             Some(l) => lc = l,
             None => process::abort(),
         }
@@ -445,7 +417,6 @@ impl LinkStates {
             }
             self.manage_cross_link(false, id, src, dst, false);
         }
-        return;
     }
 }
 
@@ -612,32 +583,6 @@ impl Bundle {
 
 impl CalculatorTrait for Bundle {}
 
-pub trait SrcDstIs {
-    fn get_container_id(&self) -> u64 {
-        return create_container_id(self.src(), self.dst());
-    }
-    fn src(&self) -> u32;
-    fn dst(&self) -> u32;
-}
-
-impl SrcDstIs for Bundle {
-    fn src(&self) -> u32 {
-        return self.src;
-    }
-    fn dst(&self) -> u32 {
-        return self.dst;
-    }
-}
-
-impl SrcDstIs for Link {
-    fn src(&self) -> u32 {
-        return self.src;
-    }
-    fn dst(&self) -> u32 {
-        return self.dst;
-    }
-}
-
 pub struct LinkContainer {
     pub links: Vec<Link>,
     pub bundles: Vec<Bundle>,
@@ -702,20 +647,6 @@ impl RenderBox for BundleRenderBox {
     }
 }
 
-impl FullBox for ComputedLinks {
-    fn full_box(&self) -> (Point, Point, Point, Point) {
-        let min_x = self.min_x;
-        let max_x = self.max_x;
-        let min_y = self.min_y;
-        let max_y = self.max_y;
-        return (
-            Point { x: min_x, y: min_y }, // nw
-            Point { x: max_x, y: min_y }, // ne
-            Point { x: min_x, y: max_y }, // sw
-            Point { x: max_x, y: max_y }, // se
-        );
-    }
-}
 impl PointBox for ComputedLinks {
     fn get_min_x(&self) -> f64 {
         return self.min_x;
@@ -749,38 +680,6 @@ pub struct ComputedLink {
     pub opt: u32,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct LinkBox {
-    ne: Point,
-    nw: Point,
-    se: Point,
-    sw: Point,
-}
-
-impl FullBox for LinkBox {
-    fn full_box(&self) -> (Point, Point, Point, Point) {
-        (self.ne, self.nw, self.se, self.sw)
-    }
-}
-
-impl CalculatorTrait for LinkBox {}
-
-impl LinkBox {
-    pub fn new(src: &Point, dst: &Point, width: f64) -> Self {
-        let r = width * 0.5;
-        let base_angle = src.get_angle(src.x, src.y, dst.x, dst.y);
-        let angle_north = base_angle + 90.0;
-        let angle_south = angle_north + 180.0;
-
-        // true outer points
-        let ne = src.get_xy(src.x, src.y, r, angle_north);
-        let nw = src.get_xy(dst.x, dst.y, r, angle_north);
-        let se = src.get_xy(src.x, src.y, r, angle_south);
-        let sw = src.get_xy(dst.x, dst.y, r, angle_south);
-        return Self { ne, nw, se, sw };
-    }
-}
-
 #[derive(Copy, Clone, Debug)]
 pub struct AnimatedLink {
     pub src: Point,
@@ -788,6 +687,7 @@ pub struct AnimatedLink {
     pub width: f64,
     pub opt: u32,
 }
+#[inline(never)]
 pub(crate) fn create_container_id(src: u32, dst: u32) -> u64 {
     let id: u64;
     if src < dst {
@@ -799,11 +699,19 @@ pub(crate) fn create_container_id(src: u32, dst: u32) -> u64 {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum LinkContainsType {
-    Bundle(Bundle),
-    Link(Link),
+pub enum LinkContainsType<'r> {
+    Bundle(&'r Bundle),
+    Link(&'r Link),
+    NoMatch,
 }
-
+impl<'r> LinkContainsType<'r> {
+    pub fn is_none(self) -> bool {
+        match self {
+            LinkContainsType::NoMatch => true,
+            _ => false,
+        }
+    }
+}
 impl LinkContainer {
     pub fn get_bundle_box(&self, id: u32) -> Option<BundleRenderBox> {
         if let Some(cl) = &self.link_src {
@@ -834,31 +742,47 @@ impl LinkContainer {
         }
         None
     }
-    pub fn contains_point(&self, p: &Point) -> Option<LinkContainsType> {
+
+    pub fn contains_point<'r>(&'r self, p: &Point) -> LinkContainsType<'r> {
         let cu;
         if let Some(c) = &self.link_src {
             cu = c;
         } else {
-            return None;
+            return LinkContainsType::NoMatch;
         }
         // first check the bundles
         let cl = &cu.cl;
         for i in 0..cl.bundles.len() {
             let bp = &cl.bundles[i];
             if self.inside_circle(p, bp, cu.r) {
-                return Some(LinkContainsType::Bundle(self.bundles[i].clone()));
+                return LinkContainsType::Bundle(&self.bundles[i]);
             }
         }
         for i in 0..cl.links.len() {
             let pb = &cl.links[i];
-            let lb = LinkBox::new(&pb.src, &pb.dst, cl.width);
+            let lb = self.full_box(&pb.src, &pb.dst, cl.width);
             if self.inside_box(&lb, p) {
-                return Some(LinkContainsType::Link(self.links[i].clone()));
+                return LinkContainsType::Link(&self.links[i]);
             }
         }
 
-        return None;
+        return LinkContainsType::NoMatch;
     }
+
+    pub fn full_box(&self, src: &Point, dst: &Point, width: f64) -> FullBox {
+        let r = width * 0.5;
+        let base_angle = src.get_angle(src.x, src.y, dst.x, dst.y);
+        let angle_north = base_angle + 90.0;
+        let angle_south = angle_north + 180.0;
+
+        // true outer points
+        let ne = src.get_xy(src.x, src.y, r, angle_north);
+        let nw = src.get_xy(dst.x, dst.y, r, angle_north);
+        let se = src.get_xy(src.x, src.y, r, angle_south);
+        let sw = src.get_xy(dst.x, dst.y, r, angle_south);
+        return (ne, nw, se, sw);
+    }
+
     pub fn get_min_r(&self, s: &Node, d: &Node) -> f64 {
         let a = s.get_min_r();
         let b = d.get_min_r();
@@ -918,8 +842,6 @@ impl LinkContainer {
         link_opt: &LinkContainerOpt,
     ) -> ComputedLinks {
         let mut links = Vec::with_capacity(self.links.len());
-        // Apply the shifting offset to create movement
-        // ctx.lineDashOffset = offset;
 
         let base_angle = self.get_angle(src.x, src.y, dst.x, dst.y);
         let angle_north = base_angle + 90.0;
@@ -936,6 +858,8 @@ impl LinkContainer {
         ne = self.get_xy(ne.x, ne.y, r, base_angle + 180.0);
         nw = self.get_xy(nw.x, nw.y, r, base_angle);
 
+        let mut animations = Vec::new();
+        let bundles = Vec::new();
         if self.links.is_empty() {
             return ComputedLinks {
                 width: r * 2.0,
@@ -944,16 +868,14 @@ impl LinkContainer {
                 max_x,
                 min_y,
                 max_y,
-                animations: Vec::new(),
-                bundles: Vec::new(),
+                animations,
+                bundles,
             };
         }
 
         let (width, step, init_step) =
             self.compute_line_width(link_opt.scale, r * 2.0, self.links.len());
 
-        // assume wost case.
-        let mut animations = Vec::new();
         for (i, link) in self.links.iter().enumerate() {
             let inc_by = init_step + step * (i as f64);
             let start = self.get_xy(ne.x, ne.y, inc_by, angle_south);
@@ -972,43 +894,15 @@ impl LinkContainer {
                     opt: link.opt,
                 }
             }
-            match link.animation {
-                Animation::None => (),
-                Animation::Both => {
-                    let (aw, _, init_step) = self.compute_line_width(1.0, width, 2);
+            self.compute_animation(
+                link,
+                &clink,
+                &mut animations,
+                width,
+                angle_north,
+                angle_south,
+            );
 
-                    animations.push(AnimatedLink {
-                        src: self.get_xy(clink.src.x, clink.src.y, init_step, angle_north),
-                        dst: self.get_xy(clink.dst.x, clink.dst.y, init_step, angle_north),
-                        width: aw,
-                        opt: link.opt,
-                    });
-                    animations.push(AnimatedLink {
-                        src: self.get_xy(clink.dst.x, clink.dst.y, init_step, angle_south),
-                        dst: self.get_xy(clink.src.x, clink.src.y, init_step, angle_south),
-                        width: aw,
-                        opt: link.opt,
-                    });
-                }
-                Animation::ToSrc => {
-                    let (aw, _, _) = self.compute_line_width(1.0, width, 1);
-                    animations.push(AnimatedLink {
-                        src: clink.dst,
-                        dst: clink.src,
-                        width: aw,
-                        opt: link.opt,
-                    });
-                }
-                Animation::ToDst => {
-                    let (aw, _, _) = self.compute_line_width(1.0, width, 1);
-                    animations.push(AnimatedLink {
-                        src: clink.src,
-                        dst: clink.dst,
-                        width: aw,
-                        opt: link.opt,
-                    });
-                }
-            }
             links.push(clink);
         }
 
@@ -1020,25 +914,70 @@ impl LinkContainer {
             min_y,
             max_y,
             animations,
-            bundles: Vec::new(),
+            bundles,
         };
     }
+
+    pub fn compute_animation(
+        &self,
+        link: &Link,
+        clink: &ComputedLink,
+        animations: &mut Vec<AnimatedLink>,
+        width: f64,
+        angle_north: f64,
+        angle_south: f64,
+    ) {
+        match link.animation {
+            Animation::Both => {
+                let (aw, _, init_step) = self.compute_line_width(1.0, width, 2);
+
+                animations.push(AnimatedLink {
+                    src: self.get_xy(clink.src.x, clink.src.y, init_step, angle_north),
+                    dst: self.get_xy(clink.dst.x, clink.dst.y, init_step, angle_north),
+                    width: aw,
+                    opt: link.opt,
+                });
+                animations.push(AnimatedLink {
+                    src: self.get_xy(clink.dst.x, clink.dst.y, init_step, angle_south),
+                    dst: self.get_xy(clink.src.x, clink.src.y, init_step, angle_south),
+                    width: aw,
+                    opt: link.opt,
+                });
+            }
+            Animation::ToSrc => {
+                let (aw, _, _) = self.compute_line_width(1.0, width, 1);
+                animations.push(AnimatedLink {
+                    src: clink.dst,
+                    dst: clink.src,
+                    width: aw,
+                    opt: link.opt,
+                });
+            }
+            Animation::ToDst => {
+                let (aw, _, _) = self.compute_line_width(1.0, width, 1);
+                animations.push(AnimatedLink {
+                    src: clink.src,
+                    dst: clink.dst,
+                    width: aw,
+                    opt: link.opt,
+                });
+            }
+            _ => (),
+        }
+    }
     pub fn compute_line_width(&self, link_scale: f64, r: f64, nodes: usize) -> (f64, f64, f64) {
-        let lc = self.compute_node_scale(nodes) as f64;
+        //let lc = self.compute_node_scale(nodes) as f64;
+        let offset;
+        match nodes {
+            0 => offset = 0,
+            1 => offset = 0,
+            _ => offset = 1,
+        }
+        let lc = (2 * nodes - offset) as f64;
         let scaled = r * link_scale;
         let width = scaled / lc;
         let step = scaled / (nodes as f64);
         return (width, step, step * 0.5);
-    }
-
-    pub fn compute_node_scale(&self, nodes: usize) -> usize {
-        let offset;
-        match nodes {
-            0 => return 0,
-            1 => offset = 0,
-            _ => offset = 1,
-        }
-        return 2 * nodes - offset;
     }
 
     pub fn compute_bunlde_points(
@@ -1048,44 +987,14 @@ impl LinkContainer {
         bundles: usize,
         points: &mut Vec<Point>,
     ) {
-        let center = src.compute_center(dst);
         points.reserve(bundles);
-        if bundles < 4 {
-            // quick and dirty optimization for up to 3 bundles..
-            match bundles {
-                // just dead center
-                1 => {
-                    points.extend_from_slice(&[center]);
-                    return;
-                }
-                // left of start, right of end
-                2 => {
-                    points.extend_from_slice(&[
-                        src.compute_center(&center),
-                        dst.compute_center(&center),
-                    ]);
-                    return;
-                }
-                // left of start, cetner, right of end.
-                3 => {
-                    points.extend_from_slice(&[
-                        src.compute_center(&center),
-                        center,
-                        dst.compute_center(&center),
-                    ]);
-                    return;
-                }
-                _ => (),
-            }
-        }
-        // From here on out it is simply cheaper to compute the distance and plot each point.
         let distance = self.get_distance(src.x, src.y, dst.x, dst.y);
-        let bc = self.compute_node_scale(bundles);
-        let width = distance / ((bc as f64) + 2.0);
+        let scale = (bundles * 2) as f64;
+        let size = distance / scale;
 
         let angle = self.get_angle(src.x, src.y, dst.x, dst.y) + 180.0;
-        for i in 0..bundles {
-            let r = width + ((i as f64) * 2.0 * width);
+        for i in (1..bundles * 2).step_by(2) {
+            let r = size * i as f64;
             points.push(self.get_xy(src.x, src.y, r, angle));
         }
     }

@@ -294,8 +294,10 @@ impl Targets {
     pub fn init_watchers(&mut self) -> Result<(), JsValue> {
         // mouse down
         add_listen_callback!(self, "pointerdown", on_down, mouse_down);
+
         // mouse up
         add_listen_callback!(self, "pointerup", on_up, mouse_up);
+
         // mouse move
         add_listen_callback!(self, "pointermove", on_move, mouse_move);
 
@@ -312,12 +314,7 @@ impl Targets {
                 e.prevent_default();
                 e.stop_propagation();
                 if let Some(w) = e.dyn_ref::<WheelEvent>() {
-                    let delta = w.delta_y() as f64;
-                    if delta < 0.0 {
-                        unsafe { (*ptr).zoom_in() }
-                    } else {
-                        unsafe { (*ptr).zoom_out() }
-                    }
+                    unsafe { (*ptr).zoom(w.delta_y()) }
                 }
             },
         ));

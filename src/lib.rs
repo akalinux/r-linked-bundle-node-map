@@ -21,7 +21,7 @@ pub struct ScreenBox {
     pub step: i64,
 }
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub enum ImgWatchId {
     Node(u32),
     Bundle(u32),
@@ -343,9 +343,8 @@ pub trait GetCenter {
     fn get_center(&self) -> Point;
 }
 
-pub trait FullBox {
-    fn full_box(&self) -> (Point, Point, Point, Point);
-}
+pub type FullBox = (Point, Point, Point, Point);
+
 pub trait PointBox {
     fn get_min_x(&self) -> f64;
     fn get_max_x(&self) -> f64;
@@ -467,8 +466,8 @@ pub trait CalculatorTrait {
         return (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)).abs() * 0.5;
     }
 
-    fn inside_box(&self, pbox: &impl FullBox, p: &Point) -> bool {
-        let (nw, ne, sw, se) = pbox.full_box();
+    fn inside_box(&self, pbox: &FullBox, p: &Point) -> bool {
+        let (nw, ne, sw, se) = pbox;
         let box_area = (self.triangle_area(ne.x, ne.y, nw.x, nw.y, se.x, se.y)
             + self.triangle_area(ne.x, ne.y, nw.x, nw.y, sw.x, sw.y))
             * TRIANGLE_MARGINE_FOR_ERROR;

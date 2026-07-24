@@ -203,26 +203,30 @@ fn in_point_tests() {
     let t = &ZERO_TRANSFORM;
     assert_eq!(
         idx.in_point(&ZERO_POINT, t, &ns, &ls),
-        Some(PointLookupResult::Node(node_a.clone()))
+        PointLookupResult::Node(&node_a)
     );
     assert_eq!(
         idx.in_point(&Point { x: 10.0, y: 10.0 }, t, &ns, &ls),
-        Some(PointLookupResult::Node(node_b.clone()))
+        PointLookupResult::Node(&node_b)
     );
     assert_eq!(
         idx.in_point(&Point { x: 5.0, y: 5.0 }, t, &ns, &ls),
-        Some(PointLookupResult::Link(link_a.clone()))
+        PointLookupResult::Link(&link_a)
     );
     assert_eq!(
         idx.in_point(&Point { x: 10.0, y: 0.0 }, t, &ns, &ls),
-        Some(PointLookupResult::Box(node_box.clone()))
+        PointLookupResult::Box(&node_box)
     );
     idx.index(ScreenSlot::Box(2), (Some(node_box.index_bound(step)), None));
-    assert_eq!(idx.in_point(&Point { x: 10.0, y: 0.0 }, t, &ns, &ls), None,);
+
+    assert_eq!(
+        idx.in_point(&Point { x: 10.0, y: 0.0 }, t, &ns, &ls),
+        PointLookupResult::NoMatch
+    );
     idx.index(ScreenSlot::Box(2), (None, Some(node_box.index_bound(step))));
     assert_eq!(
         idx.in_point(&Point { x: 10.0, y: 0.0 }, t, &ns, &ls),
-        Some(PointLookupResult::Box(node_box.clone()))
+        PointLookupResult::Box(&node_box)
     );
     ls.link_remove(
         link_a.id,
@@ -234,6 +238,6 @@ fn in_point_tests() {
     );
     assert_eq!(
         idx.in_point(&Point { x: 5.0, y: 5.0 }, t, &ns, &ls),
-        Some(PointLookupResult::Box(node_box.clone()))
+        PointLookupResult::Box(&node_box)
     );
 }

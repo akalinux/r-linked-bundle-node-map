@@ -5,7 +5,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
    apt-get update && apt-get install -y \
     curl \
     build-essential \
-    vim wget llvm ispell cargo 
+    vim wget llvm ispell cargo brotli
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
    apt-get update && apt-get install -y \
