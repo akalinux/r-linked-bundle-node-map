@@ -1,18 +1,97 @@
 use crate::Point;
 use crate::ScreenBox;
 use crate::renderer::Render;
-use gloo::{events::EventListener, events::EventListenerOptions};
 use js_sys::Number;
 use std::process;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::CanvasRenderingContext2d;
-use web_sys::{Document, Element};
+use web_sys::Window;
 use web_sys::{
-    Event, HtmlCanvasElement, HtmlDivElement, PointerEvent, ResizeObserver, ResizeObserverEntry,
-    WheelEvent,
+    AddEventListenerOptions, Document, Element, Event, HtmlCanvasElement, HtmlDivElement,
+    PointerEvent, ResizeObserver, ResizeObserverEntry, WheelEvent,
 };
 
+pub struct DivEventWatcher {
+    target: String,
+    cb: Closure<dyn FnMut(Event)>,
+    div: HtmlDivElement,
+}
+
+impl DivEventWatcher {
+    pub fn new<F>(s: &str, f: F, div: &HtmlDivElement) -> Result<Self, JsValue>
+    where
+        F: FnMut(Event) + 'static,
+    {
+        let target = String::from(s);
+        let cb = Closure::wrap(Box::new(f));
+        let options = AddEventListenerOptions::new();
+        options.set_passive(false);
+        div.add_event_listener_with_callback_and_add_event_listener_options(
+            &target,
+            cb.as_ref().unchecked_ref(),
+            &options,
+        )?;
+
+        Ok(Self {
+            div: div.clone(),
+            target,
+            cb,
+        })
+    }
+    pub fn clear(&self) {
+        let _ = self.div.remove_event_listener_with_callback_and_bool(
+            &self.target,
+            self.cb.as_ref().unchecked_ref(),
+            false,
+        );
+    }
+}
+impl Drop for DivEventWatcher {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
+
+pub struct JsTimer {
+    cb: Option<(i32, Closure<dyn FnMut()>)>,
+    window: Window,
+}
+impl JsTimer {
+    pub fn new(w: Window) -> Self {
+        Self {
+            window: w.clone(),
+            cb: None,
+        }
+    }
+    pub fn set_timeout<F>(&mut self, f: F, timeout: i32) -> Result<i32, JsValue>
+    where
+        F: FnMut() + 'static,
+    {
+        let cb = Closure::wrap(Box::new(f));
+        self.clear();
+        let t = self
+            .window
+            .set_timeout_with_callback_and_timeout_and_arguments_0(
+                cb.as_ref().unchecked_ref(),
+                timeout,
+            )?;
+
+        self.cb = Some((t, cb));
+        Ok(t)
+    }
+    pub fn clear(&mut self) {
+        if let Some((t, _)) = &self.cb {
+            self.window.clear_timeout_with_handle(*t);
+        }
+    }
+}
+
+impl Drop for JsTimer {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
 pub struct Targets {
     pub div: HtmlDivElement,
     pub boxnodes: HtmlCanvasElement,
@@ -21,14 +100,15 @@ pub struct Targets {
     pub nodes: HtmlCanvasElement,
     pub highlight: HtmlCanvasElement,
     pub root: Element,
+    pub window: Window,
     render: *mut Render,
-    on_move: Option<EventListener>,
-    on_down: Option<EventListener>,
-    on_up: Option<EventListener>,
-    on_leave: Option<EventListener>,
-    on_wheel: Option<EventListener>,
+    on_enter: Option<DivEventWatcher>,
+    on_move: Option<DivEventWatcher>,
+    on_down: Option<DivEventWatcher>,
+    on_up: Option<DivEventWatcher>,
+    on_leave: Option<DivEventWatcher>,
+    on_wheel: Option<DivEventWatcher>,
     on_size: Option<SizeWatcher>,
-    on_enter: Option<EventListener>,
     screen_box: ScreenBox,
 }
 
@@ -88,16 +168,13 @@ macro_rules! add_listen_callback {
     ($self:ident,$target:literal,$field:ident,$method:ident) => {{
         let ptr = $self.render;
         let div = $self.div.clone();
-        $self.$field = Some(EventListener::new_with_options(
-            &$self.div,
-            $target,
-            EventListenerOptions::enable_prevent_default(),
-            move |e: &Event| {
-                if let Some(p) = Targets::get_div_xy(e, &div) {
-                    unsafe { (*ptr).$method(&p) };
-                }
-            },
-        ))
+        let cb = move |e: Event| unsafe {
+            if let Some(p) = Targets::get_div_xy(&e, &div) {
+                (*ptr).$method(&p);
+            }
+        };
+        let res = DivEventWatcher::new(&$target, cb, &$self.div)?;
+        $self.$field = Some(res);
     }};
 }
 
@@ -170,7 +247,7 @@ impl Targets {
     ) -> Result<Self, JsValue> {
         let sb = unsafe { (*render).canvas_box() };
 
-        let (dom, div, root) = Self::create_div(&id, div_style)?;
+        let (dom, div, root, window) = Self::create_div(&id, div_style)?;
         let rect = div.get_bounding_client_rect();
         let screen_box = ScreenBox {
             x: 0,
@@ -191,6 +268,7 @@ impl Targets {
         let nodes = Self::create_canvas(&dom, &div, &canvas_style, w, h, &top, &left)?;
         let highlight = Self::create_canvas(&dom, &div, &canvas_style, w, h, &top, &left)?;
         let mut res = Self {
+            window,
             boxnodes,
             root,
             div,
@@ -245,11 +323,15 @@ impl Targets {
     fn create_div(
         id: &String,
         style: String,
-    ) -> Result<(Document, HtmlDivElement, Element), JsValue> {
+    ) -> Result<(Document, HtmlDivElement, Element, Window), JsValue> {
         let dom;
+        let window;
         match web_sys::window() {
             Some(w) => match w.document() {
-                Some(d) => dom = d,
+                Some(d) => {
+                    dom = d;
+                    window = w
+                }
                 None => return Err(JsValue::from_str("no `document` exists")),
             },
             None => return Err(JsValue::from_str("no global `window` exist")),
@@ -270,7 +352,7 @@ impl Targets {
         div.set_attribute("style", &style)?;
 
         root.append_child(&div)?;
-        Ok((dom, div.clone(), el))
+        Ok((dom, div.clone(), el, window))
     }
     pub fn clear_watchers(&mut self) {
         self.on_down = None;
@@ -306,10 +388,8 @@ impl Targets {
         add_listen_callback!(self, "pointerleave", on_enter, mouse_enter);
         let ptr = self.render;
 
-        self.on_wheel = Some(EventListener::new_with_options(
-            &self.div,
+        self.on_wheel = Some(DivEventWatcher::new(
             "wheel",
-            EventListenerOptions::enable_prevent_default(),
             move |e| {
                 e.prevent_default();
                 e.stop_propagation();
@@ -317,7 +397,8 @@ impl Targets {
                     unsafe { (*ptr).zoom(w.delta_y()) }
                 }
             },
-        ));
+            &self.div,
+        )?);
 
         let ptr = self as *mut Self;
         let cb = move |entries: Vec<ResizeObserverEntry>, _observer: ResizeObserver| {

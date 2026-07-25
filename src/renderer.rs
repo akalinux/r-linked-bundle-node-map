@@ -15,10 +15,10 @@ use crate::{
     node::{Node, NodeOpt},
     renderer::{
         img_loader::{ImgCache, ImgLookupState},
-        targets::Targets,
+        targets::{JsTimer, Targets},
     },
 };
-use gloo::timers::callback::Timeout;
+//use gloo::timers::callback::Timeout;
 use js_sys::Array;
 use js_sys::Function;
 //use pastey::paste;
@@ -41,7 +41,7 @@ pub struct Render {
     targets: Option<Targets>,
     id: String,
     ct: CurrentTarget,
-    current_timeout: Option<Timeout>,
+    current_timeout: Option<JsTimer>,
     ops: RenderOpt,
     width: u32,
     height: u32,
@@ -54,7 +54,7 @@ pub struct Render {
 pub struct RenderOpt {
     pub wheel_move: f64,
     pub highlight_scale: f64,
-    pub timeout: u32,
+    pub timeout: i32,
     pub font_family: String,
     pub text_align: String,
     pub animation_dashes: Vec<f64>,
@@ -302,10 +302,20 @@ impl Render {
     }
 
     pub fn build_timeout(&mut self, p: &Point) {
-        let this = self as *mut Self;
-        let p = *p;
-        let cb = move || unsafe { (*this).render_highlight(&p) };
-        self.current_timeout = Some(Timeout::new(self.ops.timeout, cb));
+        let window;
+        match &self.targets {
+            Some(t) => window = t.window.clone(),
+            None => return,
+        }
+        let cb;
+        {
+            let this = self as *mut Self;
+            let p = *p;
+            cb = move || unsafe { (*this).render_highlight(&p) };
+        }
+        let mut jst = JsTimer::new(window);
+        let _ = jst.set_timeout(cb, self.ops.timeout);
+        self.current_timeout = Some(jst)
     }
 
     pub fn mouse_leave(&mut self, p: &Point) {
