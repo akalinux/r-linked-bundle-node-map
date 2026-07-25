@@ -24,11 +24,11 @@ web-sys = {
         'PointerEvent',
         'Node',
         'Window',
+       "TextMetrics",
        "ResizeObserver", "ResizeObserverEntry" 
     ] 
 }
 wasm-bindgen-futures = "0.4.76"
-rustc-hash = "2.1.3"
 
 
 [dev-dependencies]

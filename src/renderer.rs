@@ -1,9 +1,9 @@
 pub mod img_loader;
 pub mod targets;
-use std::{mem, process};
+use std::mem;
 
 use crate::{
-    ImgSrc, Move, Point, RenderBox, ScreenBox, Transform,
+    ImgSrc, Move, Point, PointBox, RenderBox, ScreenBox, Transform,
     bsp::PointLookupResult,
     calc::{Calculator, MouseEvent, MouseImpacted, Options},
     constants::{
@@ -12,7 +12,7 @@ use crate::{
         DEFAULT_HOVER_TIMEOUT, DEFAULT_SCREEN_ZOOM, DEFAULT_TEXT_ALIGN, ZERO_TRANSFORM,
     },
     link::{Bundle, Link, LinkContainer},
-    node::{Node, NodeOpt},
+    node::{LabelPosition, Node, NodeOpt},
     renderer::{
         img_loader::{ImgCache, ImgLookupState},
         targets::{JsTimer, Targets},
@@ -39,7 +39,6 @@ pub struct Render {
     t: Transform,
     cache: Option<ImgCache>,
     targets: Option<Targets>,
-    id: String,
     ct: CurrentTarget,
     current_timeout: Option<JsTimer>,
     ops: RenderOpt,
@@ -91,44 +90,14 @@ impl RenderOpt {
         return res;
     }
 }
-/*
-macro_rules! render_opt {
-    ($field:ident,$ty:ty) => {
-        paste! {
-
-            #[wasm_bindgen]
-            impl RenderOpt {
-                pub fn [<set_ $field>](&mut self,v: $ty) {
-                    self.$field=v;
-                }
-
-                //pub fn [<get_ $field>](&mut self) ->$ty{
-                //    self.$field.clone()
-                //}
-            }
-        }
-    };
-}
-render_opt!(wheel_move, f64);
-render_opt!(highlight_alpha, f64);
-render_opt!(highlight_scale, f64);
-render_opt!(highlight_color, String);
-render_opt!(font_family, String);
-render_opt!(text_align, String);
-render_opt!(timeout, u32);
-render_opt!(animation_dashes, Vec<f64>);
-render_opt!(bulk_img_update, bool);
-render_opt!(callback, Option<Function>);
-*/
 
 #[wasm_bindgen]
 impl Render {
     #[wasm_bindgen(constructor)]
-    pub fn new(calc: &mut Calculator, ops: RenderOpt, width: u32, height: u32, id: String) -> Self {
+    pub fn new(calc: &mut Calculator, ops: RenderOpt, width: u32, height: u32) -> Self {
         Self {
             width,
             height,
-            id,
             calc: calc as *mut Calculator,
             cache: None,
             targets: None,
@@ -155,7 +124,7 @@ impl Render {
         };
         self.animation_order.clear();
         let t = &self.t;
-        let iter = unsafe { (*self.calc).indexer().on_screen(self.width, self.height, t) };
+        let iter = unsafe { (*self.calc).indexer.on_screen(self.width, self.height, t) };
         let (boxes, links, animations, nodes) = targets.get_render_targets();
         let x = self.t.x;
         let y = self.t.y;
@@ -163,46 +132,38 @@ impl Render {
         for c in [&boxes, &links, &animations, &nodes] {
             c.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)?;
             c.clear_rect(0.0, 0.0, self.width as f64, self.height as f64);
+            c.set_font(&self.ops.font_family);
             c.set_transform(k, 0.0, 0.0, k, x, y)?;
         }
         animations.set_global_alpha(self.ops.highlight_alpha);
-        let ns = unsafe { (*self.calc).nodes() };
-        let co = unsafe { (*self.calc).options_mut() };
-        let ls = unsafe { (*self.calc).links() };
-        let will_animate = unsafe { (*self.calc).animations() };
+        let ns = unsafe { &(*self.calc).nodes };
+        let co = unsafe { &mut (*self.calc).options };
+        let ls = unsafe { &(*self.calc).links };
+        let will_animate = unsafe { &(*self.calc).animations };
 
         for (node_list, link_list, box_list, _) in iter {
             for id in node_list {
-                match ns.get(id) {
-                    Some(node) => {
-                        let opt = co.get_node(&node.opt);
-                        self.draw_node(&nodes, node, opt, false);
-                    }
-                    _ => (),
+                if let Some(node) = ns.get(id) {
+                    let opt = co.get_node(&node.opt);
+                    self.draw_node(&nodes, node, opt, false)?;
                 }
             }
 
             for id in box_list {
-                match ns.get_box(id) {
-                    Some(node) => {
-                        let opt = co.get_node(&node.opt);
-                        self.draw_node(&boxes, node, opt, false);
-                    }
-                    _ => (),
+                if let Some(node) = ns.get_box(id) {
+                    let opt = co.get_node(&node.opt);
+                    self.draw_node(&boxes, node, opt, false)?;
                 }
             }
 
             let dashes = self.ops.animation_dashes();
             for id in link_list {
-                match ls.get(&id) {
-                    Some(lc) => {
-                        self.draw_lc(&links, lc, co, false);
-                        if will_animate.contains(&lc.id) {
-                            self.draw_animation(&animations, lc, co, &dashes);
-                            self.animation_order.push(lc.id);
-                        }
+                if let Some(lc) = ls.get(&id) {
+                    self.draw_lc(&links, lc, co, false);
+                    if will_animate.contains(&lc.id) {
+                        let _ = self.draw_animation(&animations, lc, co, &dashes)?;
+                        self.animation_order.push(lc.id);
                     }
-                    _ => (),
                 }
             }
         }
@@ -239,10 +200,6 @@ impl Drop for Render {
     }
 }
 impl Render {
-    pub fn get_id(&self) -> &String {
-        &self.id
-    }
-
     pub fn cache<'c>(&'c mut self) -> &'c mut ImgCache {
         match self.cache.as_mut() {
             Some(c) => return unsafe { mem::transmute(c) },
@@ -257,7 +214,7 @@ impl Render {
             height: self.height,
             x: 0,
             y: 0,
-            step: unsafe { (*self.calc).indexer().step },
+            step: unsafe { (*self.calc).indexer.step },
         }
     }
 
@@ -301,7 +258,7 @@ impl Render {
         self.ct = self.point_state(p);
     }
 
-    pub fn build_timeout(&mut self, p: &Point) {
+    fn build_timeout(&mut self, p: &Point) {
         let window;
         match &self.targets {
             Some(t) => window = t.window.clone(),
@@ -399,27 +356,16 @@ impl Render {
             let this = JsValue::null();
             let v = JsValue::from(i);
             let jsp = JsValue::from(*p);
-            match cb.call2(&this, &v, &jsp) {
-                Err(_) => process::abort(),
-                Ok(_) => {}
-            }
+            let _ = cb.call2(&this, &v, &jsp);
         }
     }
 
     fn get_node<'n>(&self, id: u32) -> &'n Node {
-        unsafe {
-            match (*self.calc).nodes().get(id) {
-                Some(node) => node,
-                None => process::abort(),
-            }
-        }
+        unsafe { (*self.calc).nodes.get(id).unwrap_unchecked() }
     }
 
     fn get_link_container<'lc>(&self, id: u64) -> &'lc LinkContainer {
-        match unsafe { (*self.calc).links().get(&id) } {
-            Some(lc) => lc,
-            None => process::abort(),
-        }
+        unsafe { (*self.calc).links.get(&id).unwrap_unchecked() }
     }
 
     pub fn render_highlight(&mut self, p: &Point) {
@@ -435,11 +381,11 @@ impl Render {
         let mut boxes = Vec::new();
         let mut bundles = Vec::new();
         let mut links = Vec::new();
-        let ops = unsafe { (*calc).options_mut() };
+        let ops = unsafe { &mut (*calc).options };
         match lookup {
             PointLookupResult::NoMatch => return,
             PointLookupResult::Box(node) => {
-                self.draw_node(
+                let _ = self.draw_node(
                     &highlight,
                     &node,
                     unsafe { (*calc).get_node(&node.opt) },
@@ -448,7 +394,7 @@ impl Render {
                 boxes.push(node.id);
             }
             PointLookupResult::Node(node) => {
-                self.draw_node(
+                let _ = self.draw_node(
                     &highlight,
                     &node,
                     unsafe { (*calc).get_node(&node.opt) },
@@ -461,11 +407,7 @@ impl Render {
                 nodes = Vec::from([l.src, l.dst]);
                 links.push(l.id);
 
-                let details;
-                match lc.get_link_render(l.id) {
-                    Some(d) => details = d,
-                    None => process::abort(),
-                }
+                let details = unsafe { lc.get_link_render(l.id).unwrap_unchecked() };
                 let width = self.ops.highlight_scale * details.2;
                 self.draw_line(
                     &highlight,
@@ -475,7 +417,7 @@ impl Render {
                     &self.ops.highlight_color,
                 );
 
-                self.draw_highlight_nodes(l.src, l.dst, &highlight);
+                let _ = self.draw_highlight_nodes(l.src, l.dst, &highlight);
             }
             PointLookupResult::Bundle(b) => {
                 nodes = Vec::from([b.src, b.dst]);
@@ -489,13 +431,9 @@ impl Render {
                         self.draw_line(&highlight, &l.0, &l.1, width, &self.ops.highlight_color);
                     }
                 }
-                let rb;
-                match lc.get_bundle_box(b.id) {
-                    Some(bb) => rb = bb,
-                    None => process::abort(),
-                }
-                self.draw_box(&highlight, &rb, ops.get_bundle(&b.opt), true);
-                self.draw_highlight_nodes(b.src, b.dst, &highlight);
+                let rb = unsafe { lc.get_bundle_box(b.id).unwrap_unchecked() };
+                let _ = self.draw_box(&highlight, &rb, ops.get_bundle(&b.opt), true);
+                let _ = self.draw_highlight_nodes(b.src, b.dst, &highlight);
             }
         }
         self.hanlde_mouse_event(
@@ -508,12 +446,18 @@ impl Render {
             p,
         );
     }
-    fn draw_highlight_nodes(&mut self, a: u32, b: u32, ctx: &CanvasRenderingContext2d) {
+    fn draw_highlight_nodes(
+        &mut self,
+        a: u32,
+        b: u32,
+        ctx: &CanvasRenderingContext2d,
+    ) -> Result<(), JsValue> {
         let src = self.get_node(a);
         let dst = self.get_node(b);
         let calc = self.calc;
-        self.draw_box(ctx, src, unsafe { (*calc).get_node(&src.opt) }, true);
-        self.draw_box(ctx, dst, unsafe { (*calc).get_node(&dst.opt) }, true);
+        self.draw_box(ctx, src, unsafe { (*calc).get_node(&src.opt) }, true)?;
+        self.draw_box(ctx, dst, unsafe { (*calc).get_node(&dst.opt) }, true)?;
+        Ok(())
     }
     pub fn zoom(&mut self, delta: f64) {
         if delta < 0.0 {
@@ -528,17 +472,14 @@ impl Render {
     }
 
     fn get_step(&self) -> i64 {
-        unsafe { (*self.calc).indexer().step }
+        unsafe { (*self.calc).indexer.step }
     }
     fn build_cache<'c>(&mut self) -> &'c mut ImgCache {
         unsafe {
             let s = self as *mut Self;
             let cache = ImgCache::new(s);
             (*s).cache = Some(cache);
-            match (*s).cache.as_mut() {
-                Some(c) => c,
-                None => process::abort(),
-            }
+            (*s).cache.as_mut().unwrap_unchecked()
         }
     }
 
@@ -558,7 +499,7 @@ impl Render {
         target: &impl RenderBox,
         opt: &impl ImgSrc,
         highlight: bool,
-    ) {
+    ) -> Result<(), JsValue> {
         if highlight {
             ctx.set_fill_style_str(&self.ops.highlight_color);
             let scale = self.ops.highlight_scale;
@@ -568,14 +509,50 @@ impl Render {
             let h = target.height() * scale;
             ctx.clear_rect(x, y, w, h);
             ctx.fill_rect(x, y, target.width() * scale, target.height() * scale);
+        } else {
+            let src = opt.img_src();
+            match self.cache().load_img(&src) {
+                ImgLookupState::Loaded(img) => {
+                    ctx.draw_image_with_html_image_element(&img, target.x(), target.y())?;
+                }
+                _ => {
+                    ctx.set_fill_style_str(&opt.box_color());
+                    ctx.fill_rect(target.x(), target.y(), target.width(), target.height())
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn draw_text(
+        &self,
+        ctx: &CanvasRenderingContext2d,
+        node: &Node,
+        opt: &NodeOpt,
+        highlight: bool,
+    ) {
+        if node.label.is_empty() {
             return;
         }
-        let src = opt.img_src();
-        match self.cache().load_img(&src) {
-            ImgLookupState::Loaded(img) => {
-                let _ = ctx.draw_image_with_html_image_element(&img, target.x(), target.y());
-            }
-            _ => ctx.fill_rect(target.x(), target.y(), target.width(), target.height()),
+        let meta = unsafe { ctx.measure_text(&node.label).unwrap_unchecked() };
+        let height = meta.font_bounding_box_ascent() + meta.font_bounding_box_descent();
+        let x = node.x - (meta.width() * 0.5);
+        let y;
+        match opt.label_position {
+            LabelPosition::Center => y = node.y - height * 0.5,
+            LabelPosition::Top => y = node.get_max_y() + height,
+            LabelPosition::Bottom => y = node.get_max_y(),
+        }
+
+        if highlight {
+            ctx.set_fill_style_str(&self.ops.highlight_color);
+            // zero out our x and y
+            let x = x - meta.width() * 0.5;
+            let y = y - height * 0.5;
+            ctx.fill_rect(x, y, meta.width(), height);
+        } else {
+            ctx.set_fill_style_str(&opt.color);
+            let _ = ctx.fill_text(&node.label, x, y);
         }
     }
     fn draw_node(
@@ -584,8 +561,10 @@ impl Render {
         node: &Node,
         opt: &NodeOpt,
         highlight: bool,
-    ) {
-        self.draw_box(ctx, node, opt, highlight);
+    ) -> Result<(), JsValue> {
+        self.draw_box(ctx, node, opt, highlight)?;
+        self.draw_text(ctx, node, opt, highlight);
+        Ok(())
     }
     fn draw_line(
         &self,
@@ -611,10 +590,9 @@ impl Render {
         highlight: bool,
     ) {
         let ls;
-        if let Some(l) = &link.link_src {
-            ls = l
-        } else {
-            return;
+        match &link.link_src {
+            Some(l) => ls = l,
+            None => return,
         }
         let w;
         if highlight {
@@ -633,14 +611,12 @@ impl Render {
         link: &LinkContainer,
         opts: &mut Options,
         dashes: &JsValue,
-    ) {
+    ) -> Result<(), JsValue> {
         let ls;
-        if let Some(l) = &link.link_src {
-            ls = l
-        } else {
-            return;
+        match &link.link_src {
+            Some(l) => ls = l,
+            None => return Err(JsValue::from("Link Has not been computed?")),
         }
-
         for a in &ls.cl.animations {
             let o = opts.get_link(&a.opt);
 
@@ -648,11 +624,12 @@ impl Render {
             ctx.set_line_dash_offset(self.frame_tick);
             ctx.set_line_width(a.width);
             ctx.set_stroke_style_str(&o.animation_color);
-            let _ = ctx.set_line_dash(dashes);
+            let _ = ctx.set_line_dash(dashes)?;
             ctx.move_to(a.src.x, a.src.y);
             ctx.line_to(a.dst.x, a.dst.y);
             ctx.close_path();
             ctx.stroke();
         }
+        Ok(())
     }
 }

@@ -8,7 +8,6 @@ use crate::{
 use pastey::paste;
 use std::collections::{HashMap, HashSet};
 use std::mem;
-use std::process;
 use wasm_bindgen::prelude::*;
 
 pub struct BacklogUpdates {
@@ -44,11 +43,7 @@ macro_rules! build_opts {
                 // not even the default option exists!
                 let opt = <$t>::defaults();
                 self.$field.insert(opt.id.clone(), opt);
-                let v;
-                match self.$field.get(&0) {
-                    Some(a) => v = a,
-                    None => process::abort(),
-                };
+                let v = unsafe { self.$field.get(&0).unwrap_unchecked() };
                 return unsafe { mem::transmute(v) };
             }
             pub fn $del(&mut self, id: &u32) -> Option<$t> {
@@ -150,36 +145,19 @@ build_opts!(NodeOpt, node, get_node, set_node, rm_node);
 
 #[wasm_bindgen]
 pub struct Calculator {
-    links: LinkStates,
-    nodes: NodeStates,
-    backlog: BacklogUpdates,
-    animations: HashSet<u64>,
-    options: Options,
-    indexer: ScreenIndex,
+    #[wasm_bindgen(skip)]
+    pub links: LinkStates,
+    #[wasm_bindgen(skip)]
+    pub nodes: NodeStates,
+    #[wasm_bindgen(skip)]
+    pub backlog: BacklogUpdates,
+    #[wasm_bindgen(skip)]
+    pub animations: HashSet<u64>,
+    #[wasm_bindgen(skip)]
+    pub options: Options,
+    #[wasm_bindgen(skip)]
+    pub indexer: ScreenIndex,
 }
-
-macro_rules! calc_acl {
-    ($field:ident,$t:ty) => {
-        paste! {
-            impl<'c> Calculator {
-
-                pub fn [<$field>](&'c self) -> &'c $t {
-                    return &self.$field
-                }
-
-                pub fn [<$field _mut>](&'c mut self) -> &'c mut $t {
-                    return &mut self.$field
-                }
-            }
-        }
-    };
-}
-calc_acl!(nodes, NodeStates);
-calc_acl!(links, LinkStates);
-calc_acl!(backlog, BacklogUpdates);
-calc_acl!(animations, HashSet<u64>);
-calc_acl!(options, Options);
-calc_acl!(indexer, ScreenIndex);
 
 macro_rules! calc_bulk {
     ($t:ty,$field:ident) => {
@@ -270,11 +248,7 @@ impl Calculator {
         let options = &mut self.options;
         let animations = &mut self.animations;
         for lid in ls.iter() {
-            let link;
-            match self.links.get_mut(lid) {
-                Some(l) => link = l,
-                None => process::abort(),
-            }
+            let link = unsafe { self.links.get_mut(lid).unwrap_unchecked() };
             link.update(ns, options, animations);
             idx.index(ScreenSlot::Link(*lid), link.screen_index(idx.step, true));
         }
@@ -294,15 +268,8 @@ impl Calculator {
     }
 
     pub fn get_src_dst_center(&self, src: u32, dst: u32) -> Point {
-        let (a, b);
-        match self.nodes.get(src) {
-            Some(x) => a = x,
-            None => process::abort(),
-        }
-        match self.nodes.get(dst) {
-            Some(x) => b = x,
-            None => process::abort(),
-        }
+        let a = unsafe { self.nodes.get(src).unwrap_unchecked() };
+        let b = unsafe { self.nodes.get(dst).unwrap_unchecked() };
         Point {
             x: (a.x + b.x) * 0.5,
             y: (a.y + b.y) * 0.5,

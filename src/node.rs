@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
-    mem, process,
+    mem,
 };
 
 use wasm_bindgen::prelude::*;
@@ -85,10 +85,7 @@ impl PartialOrd for Node {
 impl Eq for Node {}
 impl Ord for Node {
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.partial_cmp(other) {
-            Some(v) => return v,
-            None => process::abort(),
-        }
+        unsafe { self.partial_cmp(other).unwrap_unchecked() }
     }
 }
 pub struct GetRelatedNodes<'n> {

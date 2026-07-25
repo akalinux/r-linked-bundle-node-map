@@ -109,12 +109,12 @@ fn bulk_load_tests() {
         );
         assert_eq!(iter.next(), None);
     }
-    calc.links_mut().bulk = true;
+    calc.links.bulk = true;
     calc.link_remove(link.id);
     calc.bundle_remove(bundle.id);
-    assert!(calc.links().get(&link.link_id()).unwrap().is_empty());
+    assert!(calc.links.get(&link.link_id()).unwrap().is_empty());
     calc.finish_bulk_load();
-    assert!(calc.links().get(&link.link_id()).is_none());
+    assert!(calc.links.get(&link.link_id()).is_none());
     {
         let mut iter = calc.on_screen(10, 10, &t);
         assert_eq!(
@@ -141,7 +141,7 @@ fn bulk_load_tests() {
 fn wanted_srceen_tests() {
     let mut calc = Calculator::new();
     let ds = calc.default_screen_block();
-    assert!(calc.indexer().max_screen().is_none());
+    assert!(calc.indexer.max_screen().is_none());
     assert_eq!(
         calc.wanted_screens(32, 32, &ZERO_TRANSFORM),
         vec![ds.clone()]
@@ -149,13 +149,13 @@ fn wanted_srceen_tests() {
     let (src, _, _, _) = common_data();
     calc.node_add(src.clone(), false);
 
-    let step = calc.indexer().step;
+    let step = calc.indexer.step;
     assert_eq!(calc.wanted_screens(32, 32, &ZERO_TRANSFORM), vec![]);
 
     assert_eq!(
         calc.wanted_screens(
-            (calc.indexer().step * 2) as u32,
-            (calc.indexer().step * 2) as u32,
+            (calc.indexer.step * 2) as u32,
+            (calc.indexer.step * 2) as u32,
             &Transform {
                 x: 1.0,
                 y: 0.0,
@@ -188,8 +188,8 @@ fn wanted_srceen_tests() {
     );
     assert_eq!(
         calc.wanted_screens(
-            calc.indexer().step as u32,
-            calc.indexer().step as u32,
+            calc.indexer.step as u32,
+            calc.indexer.step as u32,
             &Transform {
                 x: 1.0,
                 y: 0.0,

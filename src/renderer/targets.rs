@@ -2,14 +2,11 @@ use crate::Point;
 use crate::ScreenBox;
 use crate::renderer::Render;
 use js_sys::Number;
-use std::process;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use web_sys::CanvasRenderingContext2d;
-use web_sys::Window;
 use web_sys::{
-    AddEventListenerOptions, Document, Element, Event, HtmlCanvasElement, HtmlDivElement,
-    PointerEvent, ResizeObserver, ResizeObserverEntry, WheelEvent,
+    AddEventListenerOptions, CanvasRenderingContext2d, Document, Element, Event, HtmlCanvasElement,
+    HtmlDivElement, PointerEvent, ResizeObserver, ResizeObserverEntry, WheelEvent, Window,
 };
 
 pub struct DivEventWatcher {
@@ -125,11 +122,7 @@ impl Drop for Targets {
 
 fn to_fixed_px(n: f64) -> String {
     let js_num: Number = n.into();
-    let js_str;
-    match js_num.to_fixed(2) {
-        Err(_) => process::abort(),
-        Ok(s) => js_str = s,
-    }
+    let js_str = unsafe { js_num.to_fixed(2).unwrap_unchecked() };
     let mut str = String::from(js_str);
     str.push_str("px");
     str
@@ -195,15 +188,11 @@ impl Targets {
         )
     }
     fn unpack_canvas(c: &HtmlCanvasElement) -> CanvasRenderingContext2d {
-        match c.get_context("2d") {
-            Ok(a) => match a {
-                Some(o) => match o.dyn_into::<web_sys::CanvasRenderingContext2d>() {
-                    Ok(canvas) => return canvas,
-                    Err(_) => process::abort(),
-                },
-                None => process::abort(),
-            },
-            Err(_) => process::abort(),
+        unsafe {
+            c.get_context("2d")
+                .unwrap_err_unchecked()
+                .dyn_into::<web_sys::CanvasRenderingContext2d>()
+                .unwrap_unchecked()
         }
     }
     pub fn get_animation_target(&self) -> CanvasRenderingContext2d {

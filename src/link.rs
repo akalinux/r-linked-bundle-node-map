@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    mem, process,
+    mem,
 };
 
 use wasm_bindgen::prelude::*;
@@ -50,7 +50,6 @@ impl LinkStates {
     }
     pub fn shrink_to_fit(&mut self) {
         self.links.shrink_to_fit();
-        //self.updates.shrink_to_fit();
         self.node_links.shrink_to_fit();
         self.bundle_links.shrink_to_fit();
         self.link_links.shrink_to_fit();
@@ -242,10 +241,9 @@ impl LinkStates {
         let bulk = self.bulk;
         let id = link.link_id();
         self.manage_nl(id, true);
-        let lc;
-        match self.manage(link.link_id(), true, &mut None) {
-            Some(v) => lc = v,
-            None => process::abort(),
+        let lc = unsafe {
+            self.manage(link.link_id(), true, &mut None)
+                .unwrap_unchecked()
         };
         lc.link_add(link);
         if bulk {
@@ -273,16 +271,9 @@ impl LinkStates {
             return;
         }
         for lid in links.iter() {
-            let src;
-            let dst;
-
-            match self.links.get_mut(&lid) {
-                Some(link) => {
-                    link.link_remove(id);
-                    (src, dst) = link.get_node_ids();
-                }
-                None => process::abort(),
-            }
+            let link = unsafe { self.links.get_mut(&lid).unwrap_unchecked() };
+            link.link_remove(id);
+            let (src, dst) = link.get_node_ids();
             self.manage_nl(*lid, false);
             let mut rm = None;
             self.manage(*lid, false, &mut rm);
@@ -361,11 +352,10 @@ impl LinkStates {
     ) -> &'l mut LinkContainer {
         let bulk = self.bulk;
         self.manage_cross_link(true, bunlde.id, bunlde.src, bunlde.dst, false);
-        let lc;
-        match self.manage(bunlde.link_id(), true, &mut None) {
-            Some(l) => lc = l,
-            None => process::abort(),
-        }
+        let lc = unsafe {
+            self.manage(bunlde.link_id(), true, &mut None)
+                .unwrap_unchecked()
+        };
         lc.bundle_add(bunlde);
         if bulk {
             backlog.links.insert(lc.id);
@@ -392,17 +382,9 @@ impl LinkStates {
             return;
         }
         for lid in bundles.iter() {
-            let src;
-            let dst;
-
-            match self.links.get_mut(&lid) {
-                Some(link) => {
-                    link.bundle_remove(id);
-
-                    (src, dst) = link.get_node_ids();
-                }
-                None => process::abort(),
-            }
+            let link = unsafe { self.links.get_mut(&lid).unwrap_unchecked() };
+            link.bundle_remove(id);
+            let (src, dst) = link.get_node_ids();
             let mut rm = None;
             self.manage(*lid, false, &mut rm);
             if bulk {
